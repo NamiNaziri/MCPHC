@@ -1,0 +1,221 @@
+task:
+  project_name: EgoQuest_IM
+  notes: ' obs v7, sorry for the confusing name!! This is from im_pnn_1'
+  name: HumanoidAeMcpPnn6
+  physics_engine: ${..physics_engine}
+  env:
+    numEnvs: 1
+    envSpacing: 5
+    episodeLength: 10
+    isFlagrun: false
+    enableDebugVis: false
+    bias_offset: false
+    has_self_collision: true
+    has_mesh: false
+    has_jt_limit: false
+    has_dof_subset: true
+    has_upright_start: true
+    has_smpl_pd_offset: false
+    remove_toe: false
+    real_weight_porpotion_capsules: true
+    sym_loss_coef: 1
+    big_ankle: true
+    fut_tracks: false
+    obs_v: 7
+    has_pnn: true
+    fitting: true
+    num_prim: 4
+    training_prim: 2
+    actors_to_load: 4
+    has_lateral: false
+    models:
+    - output/phc_kp_pnn_iccv/Humanoid.pth
+    zero_out_far: true
+    zero_out_far_train: false
+    cycle_motion: false
+    getup_udpate_epoch: 95000
+    getup_schedule: true
+    recoverySteps: 90
+    zero_out_far_steps: 90
+    recoveryEpisodeProb: 0.5
+    fallInitProb: 0.3
+    hard_negative: false
+    masterfoot: false
+    freeze_toe: false
+    real_weight: true
+    kp_scale: 1
+    remove_toe_im: false
+    power_reward: true
+    power_coefficient: 5.0e-05
+    has_shape_obs: false
+    has_shape_obs_disc: false
+    has_shape_variation: false
+    shape_resampling_interval: 500
+    pdControl: true
+    powerScale: 1.0
+    controlFrequencyInv: 2
+    stateInit: Random
+    hybridInitProb: 0.5
+    numAMPObsSteps: 10
+    localRootObs: true
+    rootHeightObs: true
+    keyBodies:
+    - R_Ankle
+    - L_Ankle
+    - R_Wrist
+    - L_Wrist
+    contactBodies:
+    - R_Ankle
+    - L_Ankle
+    - R_Toe
+    - L_Toe
+    resetBodies:
+    - Pelvis
+    - L_Hip
+    - L_Knee
+    - R_Hip
+    - R_Knee
+    - Torso
+    - Spine
+    - Chest
+    - Neck
+    - Head
+    - L_Thorax
+    - L_Shoulder
+    - L_Elbow
+    - L_Wrist
+    - L_Hand
+    - R_Thorax
+    - R_Shoulder
+    - R_Elbow
+    - R_Wrist
+    - R_Hand
+    terminationHeight: 0.15
+    enableEarlyTermination: true
+    terminationDistance: 0.25
+    numTrajSamples: 3
+    trajSampleTimestepInv: 3
+    enableTaskObs: true
+    asset:
+      assetRoot: /
+      assetFileName: mjcf/smpl_humanoid2.xml
+    plane:
+      staticFriction: 1.0
+      dynamicFriction: 1.0
+      restitution: 0.0
+  sim:
+    substeps: 2
+    dt: 0.01666666666
+    use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
+    up_axis: z
+    gravity:
+    - 0.0
+    - 0.0
+    - -9.81
+    physx:
+      num_threads: 4
+      solver_type: 1
+      num_position_iterations: 4
+      num_velocity_iterations: 0
+      contact_offset: 0.02
+      rest_offset: 0.0
+      bounce_threshold_velocity: 0.2
+      max_depenetration_velocity: 10.0
+      default_buffer_size_multiplier: 10.0
+    flex:
+      num_inner_iterations: 10
+      warm_start: 0.25
+train:
+  params:
+    seed: ${...seed}
+    algo:
+      name: a2c_continuous
+    model:
+      name: continuous_a2c_logstd
+    network:
+      name: actor_critic
+      separate: false
+      space:
+        continuous:
+          mu_activation: None
+          sigma_activation: None
+          mu_init:
+            name: default
+          sigma_init:
+            name: const_initializer
+            val: 0
+          fixed_sigma: false
+      mlp:
+        units:
+        - 1024
+        - 512
+        activation: relu
+        d2rl: false
+        initializer:
+          name: default
+        regularizer:
+          name: None
+    load_checkpoint: ${if:${...checkpoint},True,False}
+    load_path: ${...checkpoint}
+    config:
+      name: HumanoidAeMcpPnn6PPO
+      full_experiment_name: ${.name}
+      env_name: rlgpu
+      multi_gpu: ${....multi_gpu}
+      mixed_precision: true
+      normalize_input: true
+      normalize_value: true
+      value_bootstrap: true
+      num_actors: ${....task.env.numEnvs}
+      reward_shaper:
+        scale_value: 0.01
+      normalize_advantage: true
+      gamma: 0.99
+      tau: 0.95
+      learning_rate: 0.0005
+      lr_schedule: adaptive
+      kl_threshold: 0.008
+      score_to_win: 20000
+      max_epochs: ${resolve_default:1000,${....max_iterations}}
+      save_best_after: 1
+      save_frequency: 1
+      print_stats: true
+      grad_norm: 1.0
+      entropy_coef: 0.0
+      truncate_grads: true
+      ppo: true
+      e_clip: 0.2
+      horizon_length: 32
+      minibatch_size: 1
+      mini_epochs: 5
+      critic_coef: 4
+      clip_value: true
+      seq_len: 4
+      bounds_loss_coef: 0.0001
+task_name: ${task.name}
+experiment: ''
+num_envs: ''
+seed: 42
+torch_deterministic: false
+max_iterations: ''
+physics_engine: physx
+pipeline: gpu
+sim_device: cuda:0
+rl_device: cuda:0
+graphics_device_id: 0
+num_threads: 4
+solver_type: 1
+num_subscenes: 4
+test: false
+checkpoint: ''
+multi_gpu: false
+wandb_activate: false
+wandb_group: ''
+wandb_name: ${train.params.config.name}
+wandb_entity: ''
+wandb_project: isaacgymenvs
+capture_video: false
+capture_video_freq: 1464
+capture_video_len: 100
+force_render: true
+headless: false

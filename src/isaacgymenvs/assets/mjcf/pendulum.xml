@@ -1,0 +1,23 @@
+<mujoco model="pendulum">
+  <compiler angle="degree" coordinate="local" inertiafromgeom="true" />
+  <default>
+    <joint armature="0.01" damping=".1" limited="true"/>
+    <motor ctrlrange="-1 1" ctrllimited="true"/>
+    <geom conaffinity="0" condim="3" contype="1" density="1000" friction="1.2 .1 .1" rgba="0.8 0.6 .4 1"/>
+  </default>
+  <option integrator="RK4" iterations="50" solver="PGS" timestep="0.003" />
+  <worldbody>
+    <body name="root" pos="0 0 1">
+      <freejoint name="root"/>
+      <body name="pendulum" pos="0 0 0">
+        <inertial mass="1.0" pos="0 0 0" diaginertia="0.001 0.001 0.001" />
+        <joint name="pendulum_joint" axis="0 1 0" damping="0" limited="false" pos="0 0 0" stiffness="0" type="hinge"/>
+        <geom fromto="0.0 0.0 0.0 0.0 0.0 -1.0" name="pendulum_geom" size="0.08" type="capsule" rgba=".999 .2 .1 1"/>
+      </body>
+    </body>body>
+
+  </worldbody>
+  <actuator>
+    <motor name="pendulum_motor" gear="100" joint="pendulum_joint"/>
+  </actuator>
+</mujoco>
