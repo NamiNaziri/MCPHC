@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Python",
+        "type": "python",
+        "request": "launch",
+        "program": "/home/naminaziri/Desktop/Final_Git/MCPHC/src/phc/train.py",
+        "args": [
+          "task=HumanoidAeMcpPnn6",
+          "task.env.numEnvs=1",
+          "headless=False",
+          "test=False",
+          "train.params.config.minibatch_size=1"
+        ],
+        "cwd": "/home/naminaziri/Desktop/Final_Git/MCPHC/",
+        "env": {
+          "PYTHONPATH": "./src",
+          "LD_LIBRARY_PATH": "${env:LD_LIBRARY_PATH}:/home/naminaziri/anaconda3/envs/isaac/lib"
+
+        },
+        "stopOnEntry": false,
+        "console": "integratedTerminal",
+        "debugOptions": ["WaitOnAbnormalExit", "WaitOnNormalExit"]
+      }
+    ]
+  }

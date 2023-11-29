@@ -57,8 +57,8 @@ from phc.utils.draw_utils import agt_color, get_color_gradient
 
 num_agents = 2
 first_agent = 0
-secod_agent = 1
-main_agent = secod_agent
+second_agent = 1
+main_agent = second_agent
 ENABLE_MAX_COORD_OBS = True
 # PERTURB_OBJS = [
 #     ["small", 60],
@@ -293,7 +293,7 @@ class HumanoidAeMcpPnn6(VecTask):
         num_actors = self.get_num_actors_per_env()
 
         self._root_states_reshaped = self._root_states.view(self.num_envs, num_actors, actor_root_state.shape[-1])
-        self._humanoid_root_states = self._root_states_reshaped[..., main_agent, :]
+        self._humanoid_root_states = self._root_states_reshaped[..., self.humanoid_handles, :]
         self._initial_humanoid_root_states = self._humanoid_root_states.clone()
         self._initial_humanoid_root_states[..., 7:13] = 0
         self._initial_humanoid_root_states[..., 2] += 0.1
@@ -314,10 +314,12 @@ class HumanoidAeMcpPnn6(VecTask):
         bodies_per_env = self._rigid_body_state.shape[0] // self.num_envs
         self._rigid_body_state_reshaped = self._rigid_body_state.view(self.num_envs, bodies_per_env, 13)
 
-        self._rigid_body_pos = self._rigid_body_state_reshaped[...,main_agent * self.num_bodies:main_agent * self.num_bodies +  self.num_bodies, 0:3]
-        self._rigid_body_rot = self._rigid_body_state_reshaped[..., main_agent * self.num_bodies:main_agent * self.num_bodies + self.num_bodies, 3:7]
-        self._rigid_body_vel = self._rigid_body_state_reshaped[..., main_agent * self.num_bodies:main_agent * self.num_bodies + self.num_bodies, 7:10]
-        self._rigid_body_ang_vel = self._rigid_body_state_reshaped[..., main_agent * self.num_bodies: main_agent * self.num_bodies + self.num_bodies, 10:13]
+        # self._num_joints is used for red dots #+1 is for the box acotr. if we have more boex should be more
+        start_index = main_agent * (self.num_bodies+ self._num_joints )
+        self._rigid_body_pos = self._rigid_body_state_reshaped[...,start_index:start_index+  self.num_bodies, 0:3]
+        self._rigid_body_rot = self._rigid_body_state_reshaped[..., start_index:start_index + self.num_bodies, 3:7]
+        self._rigid_body_vel = self._rigid_body_state_reshaped[..., start_index:start_index + self.num_bodies, 7:10]
+        self._rigid_body_ang_vel = self._rigid_body_state_reshaped[..., start_index: start_index + self.num_bodies, 10:13]
 
         self._initial_box_states = self._root_states_reshaped[:, -1].clone()
 
@@ -327,6 +329,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self._rigid_body_vel_hist = torch.zeros((self.num_envs, self.past_track_steps, self.num_bodies, 3), device=self.device, dtype=torch.float)
             self._rigid_body_ang_vel_hist = torch.zeros((self.num_envs, self.past_track_steps, self.num_bodies, 3), device=self.device, dtype=torch.float)
 
+        #TODO: maybe this also has to be changed for each character
         contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
         self._contact_forces = contact_force_tensor.view(self.num_envs, bodies_per_env, 3)[..., :self.num_bodies, :]
 
@@ -985,6 +988,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.motor_efforts = to_torch(motor_efforts, device=self.device)
         self.torso_index = 0
         self.num_bodies = self.gym.get_asset_rigid_body_count(humanoid_asset)
+        
         self.num_dof = self.gym.get_asset_dof_count(humanoid_asset)
         self.num_asset_joints = self.gym.get_asset_joint_count(humanoid_asset)
         self.humanoid_handles = []
@@ -1141,8 +1145,8 @@ class HumanoidAeMcpPnn6(VecTask):
 
             self.humanoid_handles.append(humanoid_handle)
 
-        # Add marker
-        self._build_marker(env_id, env_ptr, i)
+            # Add marker
+            self._build_marker(env_id, env_ptr, i)
 
         # Add external object
         self._build_proj(env_id, env_ptr, i)
@@ -1274,7 +1278,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _compute_reward(self, actions):
         self.rew_buf[:] = compute_humanoid_reward(
-            self._humanoid_root_states,
+            self._humanoid_root_states[...,main_agent,:],
             main_agent,
             self._rigid_body_state_reshaped[:, -2],
             self._rigid_body_state_reshaped[:, -1],
@@ -1497,8 +1501,8 @@ class HumanoidAeMcpPnn6(VecTask):
         for i in range(self.hlc_control_freq_inv):
             self._compute_observations()
             g = compute_imitation_observations_v7(
-                self._humanoid_root_states[:, :3],
-                self._humanoid_root_states[:, 3:7],
+                self._humanoid_root_states[:,main_agent , :3],
+                self._humanoid_root_states[:,main_agent, 3:7],
                 self._rigid_body_pos,
                 self._rigid_body_vel,
                 self.modified_ref_body_pos,
@@ -1542,6 +1546,10 @@ class HumanoidAeMcpPnn6(VecTask):
                     if self._remove_neck:
                         pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
                         pd_tar[:, self._dof_names.index("Head") * 3:(self._dof_names.index("Head") * 3 + 3)] = 0
+
+            
+
+
 
             second_pd_tar = pd_tar.clone()
             second_pd_tar[:, 0 * 3:3] = 1
@@ -1656,7 +1664,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _init_camera(self):
         self.gym.refresh_actor_root_state_tensor(self.sim)
-        self._cam_prev_char_pos = self._humanoid_root_states[0, 0:3].cpu().numpy()
+        self._cam_prev_char_pos = self._humanoid_root_states[0,main_agent, 0:3].cpu().numpy()
 
         cam_pos = gymapi.Vec3(self._cam_prev_char_pos[0], self._cam_prev_char_pos[1] - 3.0, 1.0)
         cam_target = gymapi.Vec3(self._cam_prev_char_pos[0], self._cam_prev_char_pos[1], 1.0)
@@ -1666,7 +1674,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _update_camera(self):
         self.gym.refresh_actor_root_state_tensor(self.sim)
-        char_root_pos = self._humanoid_root_states[0, 0:3].cpu().numpy()
+        char_root_pos = self._humanoid_root_states[0,main_agent, 0:3].cpu().numpy()
 
         cam_trans = self.gym.get_viewer_camera_transform(self.viewer, None)
 
