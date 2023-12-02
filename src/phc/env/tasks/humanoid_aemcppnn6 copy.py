@@ -55,16 +55,10 @@ from scipy.spatial.transform import Rotation as sRot
 import gc
 from phc.utils.draw_utils import agt_color, get_color_gradient
 
-
-#### NOTE: VERY IMPORTANT NOTE #####
-# The memory layout of the actors are very important, Currently, first all of the humanoid actors are instansiated, then markers and then boxes.
-# Humanoid actors being first directly impacts the indexing in setup_tensor function. so if you make change to the way actors are created, you should 
-# also adjust the setup_tensor function.
-
 num_agents = 2
 first_agent = 0
 second_agent = 1
-main_agent = second_agent
+main_agent = first_agent
 ENABLE_MAX_COORD_OBS = True
 # PERTURB_OBJS = [
 #     ["small", 60],
@@ -309,13 +303,8 @@ class HumanoidAeMcpPnn6(VecTask):
         # create some wrapper tensors for different slices
         self._dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         dofs_per_env = self._dof_state.shape[0] // self.num_envs
-        
-        # TODO: ask if dof_state only used for humanoids!? if not this should be changed to use the prev solution but for agent lists
-
-        #self._dof_pos = self._dof_state.view(self.num_envs, dofs_per_env, 2)[..., main_agent * self.num_dof: main_agent * self.num_dof + self.num_dof, 0]
-        #self._dof_vel = self._dof_state.view(self.num_envs, dofs_per_env, 2)[..., main_agent * self.num_dof:main_agent * self.num_dof+ self.num_dof, 1]
-        self._dof_pos = self._dof_state.view(self.num_envs,num_agents, self.num_dof, 2)[..., 0]
-        self._dof_vel = self._dof_state.view(self.num_envs,num_agents, self.num_dof, 2)[..., 1]
+        self._dof_pos = self._dof_state.view(self.num_envs, dofs_per_env, 2)[..., main_agent * self.num_dof: main_agent * self.num_dof + self.num_dof, 0]
+        self._dof_vel = self._dof_state.view(self.num_envs, dofs_per_env, 2)[..., main_agent * self.num_dof:main_agent * self.num_dof+ self.num_dof, 1]
 
         self._initial_dof_pos = torch.zeros_like(self._dof_pos, device=self.device, dtype=torch.float)
         self._initial_dof_vel = torch.zeros_like(self._dof_vel, device=self.device, dtype=torch.float)
@@ -323,8 +312,8 @@ class HumanoidAeMcpPnn6(VecTask):
         self._rigid_body_state = gymtorch.wrap_tensor(rigid_body_state)
         self._initial_rigid_body_state = self._rigid_body_state.clone()
         bodies_per_env = self._rigid_body_state.shape[0] // self.num_envs
-        self._rigid_body_state_reshaped = self._rigid_body_state.view(self.num_envs, bodies_per_env, 13) # shape [num_env, num_bodies * num_agents + _num_joints * num_markers(should be equalt to num_agents) + num_boxes, 13]
-        self._humanoid_rigid_body_state_reshaped = self._rigid_body_state_reshaped[..., : num_agents * self.num_bodies, :].view(self.num_envs, num_agents, self.num_bodies, 13)
+        self._rigid_body_state_reshaped = self._rigid_body_state.view(self.num_envs, bodies_per_env, 13)
+
         # self._num_joints is used for red dots #+1 is for the box acotr. if we have more boex should be more
         start_index = self.get_agent_rigid_body_pos_start_index(main_agent)
         self._rigid_body_pos = self._rigid_body_state_reshaped[...,start_index:start_index+  self.num_bodies, 0:3]
@@ -1166,7 +1155,6 @@ class HumanoidAeMcpPnn6(VecTask):
 
             self.humanoid_handles.append(humanoid_handle)
 
-        for i in range(num_agents):
             # Add marker
             self._build_marker(env_id, env_ptr, i)
 
@@ -1391,16 +1379,16 @@ class HumanoidAeMcpPnn6(VecTask):
                 root_rot = r_body_rot[:, 0, :]
                 root_vel = r_body_vel[:, 0, :]
                 root_ang_vel = r_body_ang_vel[:, 0, :]
-                dof_pos = self._dof_pos[...,main_agent]
-                dof_vel = self._dof_vel[...,main_agent]
+                dof_pos = self._dof_pos
+                dof_vel = self._dof_vel
                 key_body_pos = r_body_pos[:, self._key_body_ids, :]
             else:
                 root_pos = r_body_pos[env_ids][:, 0, :]
                 root_rot = r_body_rot[env_ids][:, 0, :]
                 root_vel = r_body_vel[env_ids][:, 0, :]
                 root_ang_vel = r_body_ang_vel[env_ids][:, 0, :]
-                dof_pos = self._dof_pos[env_ids,main_agent]
-                dof_vel = self._dof_vel[env_ids,main_agent]
+                dof_pos = self._dof_pos[env_ids]
+                dof_vel = self._dof_vel[env_ids]
                 key_body_pos = r_body_pos[env_ids][:, self._key_body_ids, :]
 
             if (self.smpl_humanoid) and self.self.has_shape_obs:
@@ -1744,7 +1732,7 @@ class HumanoidAeMcpPnn6(VecTask):
         return
     
     def get_agent_rigid_body_pos_start_index(self, agent_num):
-        return agent_num * (self.num_bodies)
+        return agent_num * (self.num_bodies+ self._num_joints)
 
 
 #####################################################################
