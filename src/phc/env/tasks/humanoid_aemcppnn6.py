@@ -327,10 +327,10 @@ class HumanoidAeMcpPnn6(VecTask):
         self._humanoid_rigid_body_state_reshaped = self._rigid_body_state_reshaped[..., : num_agents * self.num_bodies, :].view(self.num_envs, num_agents, self.num_bodies, 13)
         # self._num_joints is used for red dots #+1 is for the box acotr. if we have more boex should be more
         start_index = self.get_agent_rigid_body_pos_start_index(main_agent)
-        self._rigid_body_pos = self._rigid_body_state_reshaped[...,start_index:start_index+  self.num_bodies, 0:3]
-        self._rigid_body_rot = self._rigid_body_state_reshaped[..., start_index:start_index + self.num_bodies, 3:7]
-        self._rigid_body_vel = self._rigid_body_state_reshaped[..., start_index:start_index + self.num_bodies, 7:10]
-        self._rigid_body_ang_vel = self._rigid_body_state_reshaped[..., start_index: start_index + self.num_bodies, 10:13]
+        self._rigid_body_pos = self._humanoid_rigid_body_state_reshaped[..., 0:3]
+        self._rigid_body_rot = self._humanoid_rigid_body_state_reshaped[..., 3:7]
+        self._rigid_body_vel = self._humanoid_rigid_body_state_reshaped[..., 7:10]
+        self._rigid_body_ang_vel = self._humanoid_rigid_body_state_reshaped[..., 10:13]
 
         self._initial_box_states = self._root_states_reshaped[:, -1].clone()
 
@@ -661,10 +661,10 @@ class HumanoidAeMcpPnn6(VecTask):
         #     torch.cuda.empty_cache()
 
         self._compute_observations(  
-            self._rigid_body_pos,
-            self._rigid_body_rot,
-            self._rigid_body_vel,
-            self._rigid_body_ang_vel,
+            self._rigid_body_pos [:,main_agent,...],
+            self._rigid_body_rot [:,main_agent,...],
+            self._rigid_body_vel [:,main_agent,...],
+            self._rigid_body_ang_vel [:,main_agent,...],
             env_ids)
 
         return self.obs_buf[:]
@@ -714,10 +714,10 @@ class HumanoidAeMcpPnn6(VecTask):
             if self.self_obs_v == 2:
                 self._init_tensor_history(env_ids)
             self._compute_observations(            
-            self._rigid_body_pos,
-            self._rigid_body_rot,
-            self._rigid_body_vel,
-            self._rigid_body_ang_vel,
+            self._rigid_body_pos [:,main_agent,...],
+            self._rigid_body_rot [:,main_agent,...],
+            self._rigid_body_vel [:,main_agent,...],
+            self._rigid_body_ang_vel [:,main_agent,...],
             env_ids)
             torch.cuda.empty_cache()
 
@@ -1310,7 +1310,7 @@ class HumanoidAeMcpPnn6(VecTask):
         return
 
     def _compute_reset(self):
-        self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(self.reset_buf, self.progress_buf, self._contact_forces, self._contact_body_ids, self._rigid_body_pos, self.max_episode_length, self._enable_early_termination, self._termination_heights)
+        self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(self.reset_buf, self.progress_buf, self._contact_forces, self._contact_body_ids, self._rigid_body_pos [:,main_agent,...], self.max_episode_length, self._enable_early_termination, self._termination_heights)
         return
 
     def _refresh_sim_tensors(self):
@@ -1449,7 +1449,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.input_lats = actions.to(self.device).clone()
         if len(self.input_lats.shape) == 1:
             self.input_lats = self.input_lats[None]
-        self.my_lats = self.ae.encoder.forward(self._rigid_body_pos.reshape(self._rigid_body_pos.shape[0], -1))
+        self.my_lats = self.ae.encoder.forward(self._rigid_body_pos[:,main_agent,...].reshape(self._rigid_body_pos.shape[0], -1))
 
         #sum_lats = 1e0 * self.input_lats + 1e0 * self.my_lats
         sum_lats = 1e-1 * self.input_lats + 1e0 * self.my_lats
@@ -1531,18 +1531,18 @@ class HumanoidAeMcpPnn6(VecTask):
     def physics_step(self):
         for i in range(self.hlc_control_freq_inv):
             self._compute_observations(
-                self._rigid_body_pos,
-                self._rigid_body_rot,
-                self._rigid_body_vel,
-                self._rigid_body_ang_vel,
+                self._rigid_body_pos[:,main_agent,...],
+                self._rigid_body_rot[:,main_agent,...],
+                self._rigid_body_vel[:,main_agent,...],
+                self._rigid_body_ang_vel[:,main_agent,...],
             )
             g = compute_imitation_observations_v7(
                 self._humanoid_root_states[:,main_agent , :3],
                 self._humanoid_root_states[:,main_agent, 3:7],
-                self._rigid_body_pos,
-                self._rigid_body_vel,
+                self._rigid_body_pos[:,main_agent,...],
+                self._rigid_body_vel[:,main_agent,...],
                 self.modified_ref_body_pos,
-                self.ref_body_vel,
+                self.ref_body_vel[:,main_agent,...],
                 1,
                 True
             )
@@ -1595,7 +1595,8 @@ class HumanoidAeMcpPnn6(VecTask):
 
             second_pd_tar = pd_tar.clone()
             second_pd_tar[:, 0 * 3:3] = 1
-            pd_tar = torch.cat([pd_tar ,pd_tar],dim=1)
+            #pd_tar = torch.cat([pd_tar ,pd_tar],dim=1)
+            pd_tar = pd_tar.repeat(self.num_envs, num_agents)
             #pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
             pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
             self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
@@ -1638,10 +1639,10 @@ class HumanoidAeMcpPnn6(VecTask):
         self._compute_reset()
 
         self._compute_observations(
-            self._rigid_body_pos,
-            self._rigid_body_rot,
-            self._rigid_body_vel,
-            self._rigid_body_ang_vel,
+            self._rigid_body_pos[:,main_agent,...],
+            self._rigid_body_rot[:,main_agent,...],
+            self._rigid_body_vel[:,main_agent,...],
+            self._rigid_body_ang_vel[:,main_agent,...],
         )  # observation for the next step.
 
         self.extras["terminate"] = self._terminate_buf
