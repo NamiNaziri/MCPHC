@@ -326,7 +326,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._rigid_body_state_reshaped = self._rigid_body_state.view(self.num_envs, bodies_per_env, 13) # shape [num_env, num_bodies * num_agents + _num_joints * num_markers(should be equalt to num_agents) + num_boxes, 13]
         self._humanoid_rigid_body_state_reshaped = self._rigid_body_state_reshaped[..., : num_agents * self.num_bodies, :].view(self.num_envs, num_agents, self.num_bodies, 13)
         # self._num_joints is used for red dots #+1 is for the box acotr. if we have more boex should be more
-        start_index = self.get_agent_rigid_body_pos_start_index(main_agent)
+        
         self._rigid_body_pos = self._humanoid_rigid_body_state_reshaped[..., 0:3]
         self._rigid_body_rot = self._humanoid_rigid_body_state_reshaped[..., 3:7]
         self._rigid_body_vel = self._humanoid_rigid_body_state_reshaped[..., 7:10]
@@ -342,7 +342,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
         #TODO: maybe this also has to be changed for each character
         contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
-        self._contact_forces = contact_force_tensor.view(self.num_envs, bodies_per_env, 3)[..., start_index: start_index + self.num_bodies, :]
+        self._contact_forces = contact_force_tensor.view(self.num_envs, bodies_per_env, 3)[..., :self.num_bodies, :]
     
         self._terminate_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
@@ -1085,11 +1085,8 @@ class HumanoidAeMcpPnn6(VecTask):
             #     char_h = 0.89
             char_h = 1.1
             pos = torch.tensor(get_axis_params(char_h, self.up_axis_idx)).to(self.device)
-            if(main_agent == 0):
-                pos[:2] += torch_rand_float(-1., 1., (2, 1), device=self.device).squeeze(1) * 2 * i # ZL: segfault if we do not randomize the position    
-                
-            else:
-                pos[:2] += torch_rand_float(-1., 1., (2, 1), device=self.device).squeeze(1) * 2 * abs(i-1)   # ZL: segfault if we do not randomize the position
+
+            pos[:2] += torch_rand_float(-1., 1., (2, 1), device=self.device).squeeze(1) * 2    # ZL: segfault if we do not randomize the position
             agent_pos.append(pos)
             start_pose.p = gymapi.Vec3(*pos)
             start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
@@ -1454,7 +1451,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.my_lats = self.ae.encoder.forward(self._rigid_body_pos.reshape(self.num_envs*num_agents, -1))
         #self.my_lats = self.my_lats.view(self.num_envs, -1)
         #sum_lats = 1e0 * self.input_lats + 1e0 * self.my_lats
-        sum_lats = 0 * self.input_lats + 1e0 * self.my_lats
+        sum_lats = 1e0 * self.my_lats
         # print(sum_lats)
         sum_lats = torch.where(
             sum_lats.abs() > 1,
@@ -1655,7 +1652,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._compute_observations(
             self._rigid_body_pos[:,main_agent,...],
             self._rigid_body_rot[:,main_agent,...],
-            self._rigid_body_vel[:,main_agent,...],
+            self._rigid_body_vel[:,main_agent,...], 
             self._rigid_body_ang_vel[:,main_agent,...],
             main_agent
         )  # observation for the next step.
@@ -1760,8 +1757,6 @@ class HumanoidAeMcpPnn6(VecTask):
         self.gym.clear_lines(self.viewer)
         return
     
-    def get_agent_rigid_body_pos_start_index(self, agent_num):
-        return agent_num * (self.num_bodies)
 
 
 #####################################################################
@@ -1914,10 +1909,8 @@ def compute_humanoid_reward(humanoid_root_states,agent, sword_states, box_states
     box_velocity_reward = 1 - torch.exp(-box_velocity_norm ** 2)
     input_lats_reward = torch.exp(-torch.mean(actions ** 2))
     reward = (
-         0e0  * box_velocity_reward
-        + 0e0  * sword_box_reward
-        + 0e0 * root_reward
-        + 1e-2 * input_lats_reward
+
+       0 * input_lats_reward
     )
     return reward
 
