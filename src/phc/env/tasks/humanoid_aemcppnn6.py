@@ -63,7 +63,7 @@ from phc.utils.draw_utils import agt_color, get_color_gradient
 
 #TODO: at the moment because of shape of humaniod root, yyou won't be able to run with one agent in multi envs
 
-num_agents = 2
+num_agents = 1
 first_agent = 0
 second_agent = 1
 main_agent = first_agent
@@ -306,7 +306,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._initial_humanoid_root_states[..., 7:13] = 0
         self._initial_humanoid_root_states[..., 2] += 0.1
 
-        self._humanoid_actor_ids = num_actors * torch.arange(self.num_envs , device=self.device, dtype=torch.int32)
+        self._humanoid_actor_ids = num_actors *torch.arange(self.num_envs , device=self.device, dtype=torch.int32)
 
         # create some wrapper tensors for different slices
         self._dof_state = gymtorch.wrap_tensor(dof_state_tensor)
@@ -810,8 +810,8 @@ class HumanoidAeMcpPnn6(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert (False)
 
-        # To add box obs
-        self._num_self_obs += 13
+        #TODO: To add box obs
+        #self._num_self_obs += 13
 
         return
 
@@ -1335,6 +1335,8 @@ class HumanoidAeMcpPnn6(VecTask):
             agent,
             env_ids)
 
+        #TODO: NOTE: For now i'm having issue with concating multi character obs with box, so i'm just ignoring box observation 
+        return obs
         # Concatenate box state
         # obs = torch.cat([obs, self._box_states[env_ids]], dim=-1)
 
@@ -1536,7 +1538,16 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def physics_step(self):
         for i in range(self.hlc_control_freq_inv):
-
+            #self._rigid_body_pos.reshape(self.num_envs*num_agents, -1)
+            #self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+            obs=self._compute_observations(
+                self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+                self._rigid_body_rot.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_rot.shape[-1]),
+                self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+                self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1]),
+                0
+            )
+            '''
             obs_slices = [self._compute_observations(
                 self._rigid_body_pos[:,agent,...],
                 self._rigid_body_rot[:,agent,...],
@@ -1547,8 +1558,20 @@ class HumanoidAeMcpPnn6(VecTask):
             # NOTE: current implemanetation doesn't account for multi agents, so, for multiple agents, i will calcualte this  using for loop
             # TODO: fix it?
             obs = torch.stack(obs_slices, dim=1)
-            obs = obs.view(self.num_envs * num_agents, -1)
+            '''
+            #obs = obs.view(self.num_envs * num_agents, -1)
 
+            g = compute_imitation_observations_v7(
+               self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., :3],
+                self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., 3:7],
+                self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+                self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+                self.modified_ref_body_pos, # TODO: this should be changed to use agent
+                self.ref_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,3),
+                1,
+                True
+            )
+            '''
             g_slices = [compute_imitation_observations_v7(
                 self._humanoid_root_states[:,agent , :3],
                 self._humanoid_root_states[:,agent, 3:7],
@@ -1563,7 +1586,7 @@ class HumanoidAeMcpPnn6(VecTask):
             # Combine the slices into a single tensor
             g = torch.stack(g_slices, dim=1)
             g = g.view(self.num_envs * num_agents, -1)
-
+            '''
             #
             obs = obs[..., :358]
             # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
