@@ -4,7 +4,7 @@ task:
   name: HumanoidAeMcpPnn6
   physics_engine: ${..physics_engine}
   env:
-    numEnvs: 1
+    numEnvs: 2
     envSpacing: 5
     episodeLength: 10
     isFlagrun: false
@@ -186,7 +186,7 @@ train:
       ppo: true
       e_clip: 0.2
       horizon_length: 32
-      minibatch_size: 1
+      minibatch_size: 2
       mini_epochs: 5
       critic_coef: 4
       clip_value: true

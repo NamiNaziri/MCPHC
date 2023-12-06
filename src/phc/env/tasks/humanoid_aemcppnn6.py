@@ -61,6 +61,8 @@ from phc.utils.draw_utils import agt_color, get_color_gradient
 # Humanoid actors being first directly impacts the indexing in setup_tensor function. so if you make change to the way actors are created, you should 
 # also adjust the setup_tensor function.
 
+#TODO: at the moment because of shape of humaniod root, yyou won't be able to run with one agent in multi envs
+
 num_agents = 2
 first_agent = 0
 second_agent = 1
@@ -299,12 +301,12 @@ class HumanoidAeMcpPnn6(VecTask):
         num_actors = self.get_num_actors_per_env()
 
         self._root_states_reshaped = self._root_states.view(self.num_envs, num_actors, actor_root_state.shape[-1])
-        self._humanoid_root_states = self._root_states_reshaped[..., self.humanoid_handles, :]
+        self._humanoid_root_states = self._root_states_reshaped[..., :num_agents, :]
         self._initial_humanoid_root_states = self._humanoid_root_states.clone()
         self._initial_humanoid_root_states[..., 7:13] = 0
         self._initial_humanoid_root_states[..., 2] += 0.1
 
-        self._humanoid_actor_ids = torch.arange(self.num_envs , device=self.device, dtype=torch.int32)
+        self._humanoid_actor_ids = num_actors * torch.arange(self.num_envs , device=self.device, dtype=torch.int32)
 
         # create some wrapper tensors for different slices
         self._dof_state = gymtorch.wrap_tensor(dof_state_tensor)
@@ -1025,6 +1027,8 @@ class HumanoidAeMcpPnn6(VecTask):
             self._build_env(i, env_ptr, self.humanoid_assets[i])
             self.envs.append(env_ptr)
         self.humanoid_limb_and_weights = torch.stack(self.humanoid_limb_and_weights).to(self.device)
+        self.additive_agent_pos = torch.cat(agent_pos, dim=0).view(self.num_envs, num_agents,-1)
+
         print("Humanoid Weights", self.humanoid_masses[:10])
 
         dof_prop = self.gym.get_actor_dof_properties(self.envs[0], self.humanoid_handles[0])
@@ -1167,14 +1171,14 @@ class HumanoidAeMcpPnn6(VecTask):
 
         for i in range(num_agents):
             # Add marker
-            self._build_marker(env_id, env_ptr, agent_pos[i])
+            self._build_marker(env_id, env_ptr)
 
         # Add external object
         self._build_proj(env_id, env_ptr, i)
 
         return
 
-    def _build_marker(self, env_id, env_ptr, pos_add):
+    def _build_marker(self, env_id, env_ptr):
         default_pose = gymapi.Transform()
         pos = [
             [-0.01, 0.0, 0.0],
@@ -1444,14 +1448,14 @@ class HumanoidAeMcpPnn6(VecTask):
     def pre_physics_step(self, actions):
         # if flags.debug:
         # actions *= 0
-
+        
         self.input_lats = actions.to(self.device).clone().view(self.num_envs*num_agents,-1)
         if len(self.input_lats.shape) == 1:
             self.input_lats = self.input_lats[None]
         self.my_lats = self.ae.encoder.forward(self._rigid_body_pos.reshape(self.num_envs*num_agents, -1))
         #self.my_lats = self.my_lats.view(self.num_envs, -1)
         #sum_lats = 1e0 * self.input_lats + 1e0 * self.my_lats
-        sum_lats = 1e0 * self.my_lats
+        sum_lats = 1e0 * self.input_lats + 1e0 * self.my_lats
         # print(sum_lats)
         sum_lats = torch.where(
             sum_lats.abs() > 1,
@@ -1472,9 +1476,8 @@ class HumanoidAeMcpPnn6(VecTask):
         self.modified_ref_body_pos = self.ref_body_pos.clone()
         
         for i in range(num_agents):
-
-            self.modified_ref_body_pos[:, i * self.num_bodies: i * self.num_bodies + self.num_bodies, 0] += agent_pos[i][0]
-            self.modified_ref_body_pos[:, i * self.num_bodies: i * self.num_bodies + self.num_bodies, 1] += agent_pos[i][1]
+            self.modified_ref_body_pos[:, i * self.num_bodies: i * self.num_bodies + self.num_bodies, 0] += self.additive_agent_pos[:,i,0, np.newaxis]
+            self.modified_ref_body_pos[:, i * self.num_bodies: i * self.num_bodies + self.num_bodies, 1] += self.additive_agent_pos[:,i,1, np.newaxis]
 
         # body_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
         # # # mask_names = ['R_Shoulder', 'R_Elbow', 'R_Wrist']
@@ -1604,7 +1607,7 @@ class HumanoidAeMcpPnn6(VecTask):
                     #    pd_tar[:, self._dof_names.index("L_Toe") * 3:(self._dof_names.index("L_Toe") * 3 + 3)] = 0
                     #    pd_tar[:, self._dof_names.index("R_Toe") * 3:(self._dof_names.index("R_Toe") * 3 + 3)] = 0
                     #if self._remove_neck:
-                     #   pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
+                    #    pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
                      #   pd_tar[:, self._dof_names.index("Head") * 3:(self._dof_names.index("Head") * 3 + 3)] = 0
 
             

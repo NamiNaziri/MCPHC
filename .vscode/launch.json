@@ -8,10 +8,10 @@
         "program": "/home/naminaziri/Desktop/Final_Git/MCPHC/src/phc/train.py",
         "args": [
           "task=HumanoidAeMcpPnn6",
-          "task.env.numEnvs=1",
+          "task.env.numEnvs=2",
           "headless=False",
           "test=False",
-          "train.params.config.minibatch_size=1"
+          "train.params.config.minibatch_size=2"
         ],
         "cwd": "/home/naminaziri/Desktop/Final_Git/MCPHC/",
         "env": {
