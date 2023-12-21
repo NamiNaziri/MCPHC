@@ -4,7 +4,7 @@ task:
   name: HumanoidAeMcpPnn6
   physics_engine: ${..physics_engine}
   env:
-    numEnvs: 5
+    numEnvs: 2
     envSpacing: 5
     episodeLength: 10
     isFlagrun: false
@@ -186,7 +186,7 @@ train:
       ppo: true
       e_clip: 0.2
       horizon_length: 32
-      minibatch_size: 5
+      minibatch_size: 2
       mini_epochs: 5
       critic_coef: 4
       clip_value: true
@@ -215,7 +215,7 @@ wandb_name: ${train.params.config.name}
 wandb_entity: ''
 wandb_project: isaacgymenvs
 capture_video: false
-capture_video_freq: 1464
+capture_video_freq: 1500
 capture_video_len: 100
 force_render: true
 headless: false

@@ -16,7 +16,7 @@
         "cwd": "/home/naminaziri/Desktop/Final_Git/MCPHC/",
         "env": {
           "PYTHONPATH": "./src",
-          "LD_LIBRARY_PATH": "${env:LD_LIBRARY_PATH}:/home/naminaziri/anaconda3/envs/isaac/lib"
+          "LD_LIBRARY_PATH": "${env:LD_LIBRARY_PATH}:/home/naminaziri/anaconda3/envs/phc/lib"
 
         },
         "stopOnEntry": false,

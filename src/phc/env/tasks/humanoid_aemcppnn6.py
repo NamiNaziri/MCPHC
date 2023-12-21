@@ -63,7 +63,7 @@ from phc.utils.draw_utils import agt_color, get_color_gradient
 
 #TODO: at the moment because of shape of humaniod root, yyou won't be able to run with one agent in multi envs
 
-num_agents = 1
+num_agents = 6
 first_agent = 0
 second_agent = 1
 main_agent = first_agent
@@ -662,14 +662,14 @@ class HumanoidAeMcpPnn6(VecTask):
         #     self.reset_idx(env_ids)
         #     torch.cuda.empty_cache()
 
-        obs = self._compute_observations(  
-            self._rigid_body_pos [:,main_agent,...],
-            self._rigid_body_rot [:,main_agent,...],
-            self._rigid_body_vel [:,main_agent,...],
-            self._rigid_body_ang_vel [:,main_agent,...],
-            main_agent,
-            env_ids)
-
+        #TODO: fix the function to use env_ids
+        self._compute_observations(
+                self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+                self._rigid_body_rot.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_rot.shape[-1]),
+                self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+                self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1])
+            )
+        obs = self.obs_buf
         return obs[:]
 
     def change_char_color(self):
@@ -716,13 +716,14 @@ class HumanoidAeMcpPnn6(VecTask):
 
             if self.self_obs_v == 2:
                 self._init_tensor_history(env_ids)
-            self._compute_observations(            
-            self._rigid_body_pos [:,main_agent,...],
-            self._rigid_body_rot [:,main_agent,...],
-            self._rigid_body_vel [:,main_agent,...],
-            self._rigid_body_ang_vel [:,main_agent,...],
-            main_agent,
-            env_ids)
+
+            #TODO: fix the function to use env_ids
+            self._compute_observations(
+                self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+                self._rigid_body_rot.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_rot.shape[-1]),
+                self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+                self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1])
+            )
             torch.cuda.empty_cache()
 
         return
@@ -809,6 +810,9 @@ class HumanoidAeMcpPnn6(VecTask):
         else:
             print("Unsupported character config file: {s}".format(asset_file))
             assert (False)
+
+        # Account for all agents
+        self._num_self_obs *= num_agents
 
         #TODO: To add box obs
         #self._num_self_obs += 13
@@ -1312,7 +1316,15 @@ class HumanoidAeMcpPnn6(VecTask):
         return
 
     def _compute_reset(self):
-        self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(self.reset_buf, self.progress_buf, self._contact_forces, self._contact_body_ids, self._rigid_body_pos [:,main_agent,...], self.max_episode_length, self._enable_early_termination, self._termination_heights)
+        self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
+        self.reset_buf, 
+        self.progress_buf,
+        self._contact_forces,
+        self._contact_body_ids,
+        self._rigid_body_pos [:,main_agent,...],
+        self.max_episode_length, 
+        self._enable_early_termination,
+        self._termination_heights)
         return
 
     def _refresh_sim_tensors(self):
@@ -1326,28 +1338,34 @@ class HumanoidAeMcpPnn6(VecTask):
 
         return
 
-    def _compute_observations(self,r_body_pos, r_body_rot, r_body_vel, r_body_ang_vel,agent, env_ids=None):
+    def _compute_observations(self,r_body_pos, r_body_rot, r_body_vel, r_body_ang_vel, env_ids=None):
+
+        #TODO: fix the function to use env_ids
         obs = self._compute_humanoid_obs(
             r_body_pos,
             r_body_rot,
             r_body_vel,
             r_body_ang_vel,
-            agent,
             env_ids)
 
         #TODO: NOTE: For now i'm having issue with concating multi character obs with box, so i'm just ignoring box observation 
-        return obs
+        
         # Concatenate box state
         # obs = torch.cat([obs, self._box_states[env_ids]], dim=-1)
 
+        # Currently the obs is shape of (num_envs*num_agents, 358) but the obs_buf is looking for (num_envs, num_agents*358)
+        
         if env_ids is None:
-            self.obs_buf[:] = torch.cat([obs, self._box_states], dim=-1)
+            new_obs = obs.clone().reshape(self.num_envs, -1)
+            self.obs_buf[:] = torch.cat([new_obs], dim=-1)
         else:
-            self.obs_buf[env_ids] = torch.cat([obs, self._box_states[env_ids]], dim=-1)
+            new_obs = obs.clone().reshape(self.num_envs, -1)
+            self.obs_buf[env_ids] = torch.cat([new_obs], dim=-1)
 
-        return self.obs_buf
+        return obs
 
-    def _compute_humanoid_obs(self,r_body_pos, r_body_rot, r_body_vel, r_body_ang_vel, agent, env_ids=None):
+#TODO: fix the function to use env_ids
+    def _compute_humanoid_obs(self,r_body_pos, r_body_rot, r_body_vel, r_body_ang_vel, env_ids=None):
         if (ENABLE_MAX_COORD_OBS):
             if (env_ids is None):
                 body_pos = r_body_pos
@@ -1362,6 +1380,7 @@ class HumanoidAeMcpPnn6(VecTask):
                     body_ang_vel = torch.cat([self._rigid_body_ang_vel_hist, body_ang_vel.unsqueeze(1)], dim=1)
 
             else:
+                #TODO: to fix for env_ids, prob should reshape here and then reshape after
                 body_pos = r_body_pos[env_ids]
                 body_rot = r_body_rot[env_ids]
                 body_vel = r_body_vel[env_ids]
@@ -1544,8 +1563,7 @@ class HumanoidAeMcpPnn6(VecTask):
                 self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
                 self._rigid_body_rot.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_rot.shape[-1]),
                 self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
-                self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1]),
-                0
+                self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1])
             )
             '''
             obs_slices = [self._compute_observations(
@@ -1645,6 +1663,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
             self._compute_reward(self.input_lats)  # ZL swapped order of reward & objecation computes. should be fine.
 
+            # shifting reward history to the left and adding new reward to the end of the history list
             self.rew_hist[:, :-1] = self.rew_hist[:, 1:] * 1
             self.rew_hist[:, -1] = self.rew_buf[:] * 1
 
@@ -1676,11 +1695,10 @@ class HumanoidAeMcpPnn6(VecTask):
         self._compute_reset()
 
         self._compute_observations(
-            self._rigid_body_pos[:,main_agent,...],
-            self._rigid_body_rot[:,main_agent,...],
-            self._rigid_body_vel[:,main_agent,...], 
-            self._rigid_body_ang_vel[:,main_agent,...],
-            main_agent
+            self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+            self._rigid_body_rot.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_rot.shape[-1]),
+            self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+            self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1])
         )  # observation for the next step.
 
         self.extras["terminate"] = self._terminate_buf
@@ -1700,12 +1718,12 @@ class HumanoidAeMcpPnn6(VecTask):
 
         return
 
-    def render(self, sync_frame_time=False):
+    def render(self, sync_frame_time=False, mode="human"):
         if self.viewer:
             self._update_camera()
 
-        super().render(sync_frame_time)
-        return
+        
+        return super().render(mode)
 
     def _build_key_body_ids_tensor(self, key_body_names):
         if self.smpl_humanoid:
@@ -1753,7 +1771,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self._cam_prev_char_pos = self._humanoid_root_states[0,main_agent, 0:3].cpu().numpy()
 
-        cam_pos = gymapi.Vec3(self._cam_prev_char_pos[0], self._cam_prev_char_pos[1] - 3.0, 1.0)
+        cam_pos = gymapi.Vec3(self._cam_prev_char_pos[0] + 5.0, self._cam_prev_char_pos[1] - 3.0, 3.0)
         cam_target = gymapi.Vec3(self._cam_prev_char_pos[0], self._cam_prev_char_pos[1], 1.0)
         if self.viewer:
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
@@ -1771,7 +1789,7 @@ class HumanoidAeMcpPnn6(VecTask):
         new_cam_target = gymapi.Vec3(char_root_pos[0], char_root_pos[1], 1.0)
         new_cam_pos = gymapi.Vec3(char_root_pos[0] + cam_delta[0], char_root_pos[1] + cam_delta[1], cam_pos[2])
 
-        # self.gym.set_camera_location(self.recorder_camera_handle, self.envs[0], new_cam_pos, new_cam_target)
+        #self.gym.set_camera_location(self.recorder_camera_handle, self.envs[0], new_cam_pos, new_cam_target)
 
         if self.viewer:
             self.gym.viewer_camera_look_at(self.viewer, None, new_cam_pos, new_cam_target)
@@ -1936,12 +1954,12 @@ def compute_humanoid_reward(humanoid_root_states,agent, sword_states, box_states
     input_lats_reward = torch.exp(-torch.mean(actions ** 2))
     reward = (
 
-       0 * input_lats_reward
+       1 * input_lats_reward
     )
     return reward
 
 
-@torch.jit.script
+#@torch.jit.script
 def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, max_episode_length, enable_early_termination, termination_heights):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)

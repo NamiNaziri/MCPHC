@@ -164,7 +164,7 @@ class Env(ABC):
 
 class VecTask(Env):
 
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 24}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 24}
 
     def __init__(self, config, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture: bool = False, force_render: bool = False):
         """Initialise the `VecTask`.
