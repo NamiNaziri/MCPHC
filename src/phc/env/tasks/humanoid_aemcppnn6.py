@@ -729,11 +729,13 @@ class HumanoidAeMcpPnn6(VecTask):
         return
 
     def _reset_env_tensors(self, env_ids):
+        
         env_ids_int32 = self._humanoid_actor_ids[env_ids]
-
-        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        new_env_ids_int32 = torch.cat([torch.arange(start, start + num_agents, device=self.device, dtype=torch.int32) for start in env_ids_int32])
+        #env_ids_int32 = torch.arange(start=env_ids_int32, end=env_ids_int32 + num_agents , device=self.device, dtype=torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(new_env_ids_int32), len(new_env_ids_int32))
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(self._box_actor_ids), len(self._box_actor_ids))
-        self.gym.set_dof_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._dof_state), gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        self.gym.set_dof_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._dof_state), gymtorch.unwrap_tensor(new_env_ids_int32), len(new_env_ids_int32))
         # for env_ptr, humanoid_ptr in zip(self.envs, self.humanoid_handles):
         #     rbs = self.gym.get_actor_rigid_body_states(env_ptr, humanoid_ptr, gymapi.STATE_ALL)
         #     self.gym.set_actor_rigid_body_states(self.gym, env_ptr, humanoid_ptr, gymtorch.unwrap_tensor(self._rigid_body_state), self.num_bodies)
@@ -1688,7 +1690,9 @@ class HumanoidAeMcpPnn6(VecTask):
 
         # if self.self_obs_v == 2:
         #     self._update_tensor_history()
-
+        env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        if len(env_ids) > 0:
+            self.reset_idx(env_ids)
         self._refresh_sim_tensors()
         # self._compute_reward(self.actions)  # ZL swapped order of reward & objecation computes. should be fine.
         self.rew_buf = self.rew_hist.mean(-1)

@@ -363,6 +363,7 @@ class VecTask(Env):
             self.obs_dict["states"] = self.get_state()
 
         return self.obs_dict, self.rew_buf.to(self.rl_device), self.reset_buf.to(self.rl_device), self.extras
+        
 
     def zero_actions(self) -> torch.Tensor:
         """Returns a buffer with zero actions.

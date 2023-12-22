@@ -642,6 +642,7 @@ class HumanoidAeMcpPnn7(VecTask):
         #     torch.cuda.empty_cache()
 
         self._compute_observations(env_ids)
+        self.reset_buf[env_ids] = 0
 
         return self.obs_buf[:]
 
@@ -1572,11 +1573,15 @@ class HumanoidAeMcpPnn7(VecTask):
 
         # if self.self_obs_v == 2:
         #     self._update_tensor_history()
-
+        env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        if len(env_ids) > 0:
+            self.reset_idx(env_ids)
         self._refresh_sim_tensors()
         # self._compute_reward(self.actions)  # ZL swapped order of reward & objecation computes. should be fine.
         self.rew_buf = self.rew_hist.mean(-1)
         self._compute_reset()
+
+        
 
         self._compute_observations()  # observation for the next step.
 
@@ -1836,7 +1841,7 @@ def compute_humanoid_reward(humanoid_root_states, sword_states, box_states, acti
     return reward
 
 
-@torch.jit.script
+#@torch.jit.script
 def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, max_episode_length, enable_early_termination, termination_heights):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)
@@ -1871,6 +1876,7 @@ def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_id
     reset = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated)
     # import ipdb
     # ipdb.set_trace()
+    
 
     return reset, terminated
 
