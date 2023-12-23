@@ -63,7 +63,7 @@ from phc.utils.draw_utils import agt_color, get_color_gradient
 
 #TODO: at the moment because of shape of humaniod root, yyou won't be able to run with one agent in multi envs
 
-num_agents = 6
+num_agents = 4
 first_agent = 0
 second_agent = 1
 main_agent = first_agent
@@ -342,17 +342,22 @@ class HumanoidAeMcpPnn6(VecTask):
             self._rigid_body_vel_hist = torch.zeros((self.num_envs, self.past_track_steps, self.num_bodies, 3), device=self.device, dtype=torch.float)
             self._rigid_body_ang_vel_hist = torch.zeros((self.num_envs, self.past_track_steps, self.num_bodies, 3), device=self.device, dtype=torch.float)
 
-        #TODO: maybe this also has to be changed for each character
+        #TODO: maybe this also has to be changed for each character DONE: Did this!
         contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
-        self._contact_forces = contact_force_tensor.view(self.num_envs, bodies_per_env, 3)[..., :self.num_bodies, :]
+        self._contact_forces = contact_force_tensor.view(self.num_envs, bodies_per_env, 3)[..., :self.num_bodies * num_agents, :]
     
         self._terminate_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
         self._build_termination_heights()
+
+        # populate for all of the agents
+        self._termination_heights = self._termination_heights.repeat(num_agents)
         contact_bodies = self.cfg["env"]["contactBodies"]
         self._key_body_ids = self._build_key_body_ids_tensor(self.key_bodies)
 
         self._contact_body_ids = self._build_contact_body_ids_tensor(contact_bodies)
+        # populate for all of the agents
+        self._contact_body_ids = torch.cat ([self._contact_body_ids + self.num_bodies * ii for ii in range(num_agents)])
 
         if self.viewer != None:
             self._init_camera()
@@ -1309,8 +1314,8 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _compute_reward(self, actions):
         self.rew_buf[:] = compute_humanoid_reward(
-            self._humanoid_root_states[...,main_agent,:],
-            main_agent,
+            self._humanoid_root_states,
+            self._initial_humanoid_root_states,
             self._rigid_body_state_reshaped[:, -2],
             self._rigid_body_state_reshaped[:, -1],
             actions.view(self.num_envs, -1),
@@ -1323,7 +1328,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.progress_buf,
         self._contact_forces,
         self._contact_body_ids,
-        self._rigid_body_pos [:,main_agent,...],
+        self._rigid_body_pos.reshape(self.num_envs, num_agents * self.num_bodies,3),
         self.max_episode_length, 
         self._enable_early_termination,
         self._termination_heights)
@@ -1942,33 +1947,37 @@ def compute_humanoid_observations_max(body_pos, body_rot, body_vel, body_ang_vel
     return obs
 
 
-@torch.jit.script
-def compute_humanoid_reward(humanoid_root_states,agent, sword_states, box_states, actions):
+#@torch.jit.script
+def compute_humanoid_reward(humanoid_root_states,initial_humanoid_root_states, sword_states, box_states, actions):
     # type: (Tensor, int, Tensor, Tensor, Tensor) -> Tensor
     sword_xyz = sword_states[:, 0:3]
     box_xyz = box_states[:, 0:3]
     root_goal_xyz = torch.tensor([0.0, 0.0, 1.0]).to(humanoid_root_states)
     #TODO: do the same for the second one
-    root_delta = humanoid_root_states[:, 0:3] - root_goal_xyz[None].to(humanoid_root_states)
+    root_delta = humanoid_root_states[..., 0:3] - initial_humanoid_root_states[..., 0:3]
+    #root_delta = humanoid_root_states[:, 0:3] - root_goal_xyz[None].to(humanoid_root_states)
     root_reward = torch.exp(-torch.sum(root_delta ** 2, dim=-1))
+    root_reward = torch.sum(root_reward, dim=-1)
     sword_box_delta = sword_xyz - box_xyz
     sword_box_reward = torch.exp(-torch.sum(sword_box_delta ** 2, dim=-1))
     box_velocity_norm = torch.norm(box_states[:, 7:10], dim=-1)
     box_velocity_reward = 1 - torch.exp(-box_velocity_norm ** 2)
     input_lats_reward = torch.exp(-torch.mean(actions ** 2))
     reward = (
-
-       1 * input_lats_reward
+        1e-1 * root_reward +
+        1e-2 * input_lats_reward
     )
     return reward
 
 
-#@torch.jit.script
+@torch.jit.script
 def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, max_episode_length, enable_early_termination, termination_heights):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)
 
     if (enable_early_termination):
+        # in the base implementation contact_body_ids are ids of ['R_Ankle', 'L_Ankle', 'R_Toe', 'L_Toe']
+        # for my implementation it has the ids for all of the characters' ['R_Ankle', 'L_Ankle', 'R_Toe', 'L_Toe']
         masked_contact_buf = contact_buf.clone()
         masked_contact_buf[:, contact_body_ids, :] = 0
         fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
@@ -1989,6 +1998,7 @@ def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_id
         ############################## Debug ##############################
 
         has_fallen = torch.logical_and(fall_contact, fall_height)
+        
 
         # first timestep can sometimes still have nonzero contact forces
         # so only check after first couple of steps

@@ -186,7 +186,7 @@ train:
       ppo: true
       e_clip: 0.2
       horizon_length: 32
-      minibatch_size: 2
+      minibatch_size: 32768
       mini_epochs: 5
       critic_coef: 4
       clip_value: true
@@ -206,8 +206,8 @@ graphics_device_id: 0
 num_threads: 4
 solver_type: 1
 num_subscenes: 4
-test: false
-checkpoint: ''
+test: true
+checkpoint: /home/naminaziri/Desktop/Final_Git/MCPHC/runs/HumanoidAeMcpPnn6PPO/nn/HumanoidAeMcpPnn6PPO.pth
 multi_gpu: false
 wandb_activate: false
 wandb_group: ''
