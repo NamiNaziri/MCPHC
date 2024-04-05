@@ -1,0 +1,9 @@
+data
+isaacgym
+runs
+output
+good
+*.sif
+*.zip
+test_anim.pkl
+test_anim_short.pkl
