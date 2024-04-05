@@ -186,7 +186,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._sampled_motion_ids = torch.arange(self.num_envs* num_agents).to(self.device)
         self._sampled_motion_ids = self._sampled_motion_ids.reshape(self.num_envs, num_agents)
         #self._sampled_motion_ids = torch.zeros(self.num_envs).long().to(self.device)
-        self.motion_file = './data/amass/pkls/amass_copycat_take5_train.pkl'#TODO: cfg['env']['motion_file']
+        self.motion_file = './data/amass/pkls/martial_arts.pkl'#TODO: cfg['env']['motion_file']
         self._load_motion(self.motion_file)
         self.ref_motion_cache = {}
         self._motion_start_times_offset = torch.zeros([self.num_envs, num_agents]).to(self.device)
@@ -1671,13 +1671,14 @@ class HumanoidAeMcpPnn6(VecTask):
         rigid_body_vel=None,
         rigid_body_ang_vel=None,
     ):
+        
         if(self.root_motion):
-            self._humanoid_root_states[env_ids, ..., 0:2] += root_pos.reshape(len(env_ids), num_agents,-1)[env_ids, ..., 0:2]
+            self._humanoid_root_states[env_ids, ..., 0:2] += root_pos.reshape(len(env_ids), num_agents,-1)[..., 0:2]
         self._humanoid_root_states[env_ids,..., 3:7] = root_rot.reshape(len(env_ids), num_agents,-1)
 
         if(self.actor_init_pos == 'back_to_back'):
-            q = quat_from_angle_axis(torch.tensor([-0.5 * np.pi]), torch.tensor([0.0,0.0,1.0]) ).to(self.device)
-            self._humanoid_root_states[env_ids,1, 3:7] = q * self._humanoid_root_states[env_ids,1, 3:7] 
+            q = quat_from_angle_axis(torch.tensor([np.pi]).to(self.device), torch.tensor([0.0,0.0,1.0]).to(self.device) ).repeat(len(env_ids),1)
+            self._humanoid_root_states[env_ids,1, 3:7] = quat_mul(q, self._humanoid_root_states[env_ids,1, 3:7] )
 
         self._humanoid_root_states[env_ids,..., 7:10] = root_vel.reshape(len(env_ids), num_agents,-1)
         self._humanoid_root_states[env_ids,..., 10:13] = root_ang_vel.reshape(len(env_ids), num_agents,-1)
