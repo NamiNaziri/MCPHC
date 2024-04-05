@@ -211,6 +211,8 @@ class HumanoidAeMcpPnn6(VecTask):
             ae_dict = torch.load(f"{proj_dir}/good/ae2.pkl")
         elif self.ae_type == "vae":
             ae_dict = torch.load(f"{proj_dir}/good/vae11.0.pkl")
+        else:
+            ae_dict = torch.load(f"{proj_dir}/good/ae2.pkl")
         
         for line in ae_dict['imports'].split("\n"):
             exec(line, globals())
@@ -1712,9 +1714,9 @@ class HumanoidAeMcpPnn6(VecTask):
         self.my_lats = self.ae.encoder.forward(self.ae.rms.normalize(self.ref_rb_pos.reshape(self.ref_rb_pos.shape[0], -1)))
 
         if self.ae_type == "ae":
-            self.pre_physics_step_ae(input_lats_importance=0,input_my_lats_importance=1e0,force_t_pose=False)
+            self.pre_physics_step_ae(input_lats_importance=1e0,input_my_lats_importance=1e0,force_t_pose=False)
         elif self.ae_type == "vae":
-            self.pre_physics_step_vae(input_lats_importance=1e0,input_my_lats_importance=0,force_t_pose=False)
+            self.pre_physics_step_vae(input_lats_importance=1e0,input_my_lats_importance=1e0,force_t_pose=False)
         else:
             self.pre_physics_step_none()
 
@@ -1760,7 +1762,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(self._marker_actor_ids), len(self._marker_actor_ids))
 
         # NOTE: In Nam Hee's code this is set to zero
-        self.ref_body_vel = 0.5 * (self._rigid_body_vel.reshape(-1,24,3) + ref_body_vel)
+        self.ref_body_vel = ref_body_vel #0.5 * (self._rigid_body_vel.reshape(-1,24,3) + ref_body_vel)
 
         self.step_count += 1
         self.progress_buf += 1
@@ -1807,7 +1809,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.modified_rb_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
 
     def pre_physics_step_none(self):
-
+        self.ref_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
         self.modified_ref_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
         self.modified_rb_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
 
