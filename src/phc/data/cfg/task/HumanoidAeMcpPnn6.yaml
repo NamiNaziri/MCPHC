@@ -14,7 +14,8 @@ env:
 
   ae_type: "ae"  #Can be {ae, vae, none}
   actor_init_pos: "random" # Can be {random, back_to_back}
-  
+  root_motion: True
+
   bias_offset: False
   has_self_collision: True
   has_mesh: False

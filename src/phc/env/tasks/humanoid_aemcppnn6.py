@@ -134,6 +134,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
         self.ae_type = self.cfg["env"]["ae_type"]
         self.actor_init_pos = self.cfg["env"]["actor_init_pos"]
+        self.root_motion = self.cfg["env"]["root_motion"]
 
         self._pd_control = self.cfg["env"]["pdControl"]
         self.power_scale = self.cfg["env"]["powerScale"]
@@ -185,7 +186,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._sampled_motion_ids = torch.arange(self.num_envs* num_agents).to(self.device)
         self._sampled_motion_ids = self._sampled_motion_ids.reshape(self.num_envs, num_agents)
         #self._sampled_motion_ids = torch.zeros(self.num_envs).long().to(self.device)
-        self.motion_file = './data/amass/pkls/martial_arts.pkl'#TODO: cfg['env']['motion_file']
+        self.motion_file = './data/amass/pkls/amass_copycat_take5_train.pkl'#TODO: cfg['env']['motion_file']
         self._load_motion(self.motion_file)
         self.ref_motion_cache = {}
         self._motion_start_times_offset = torch.zeros([self.num_envs, num_agents]).to(self.device)
@@ -779,7 +780,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self._reset_env_tensors(env_ids)
 
             self._refresh_sim_tensors()
-            self._rigid_body_state[env_ids] = self._initial_rigid_body_state[env_ids]
+            #self._rigid_body_state[env_ids] = self._initial_rigid_body_state[env_ids]
 
             self.gym.simulate(self.sim)
 
@@ -1180,7 +1181,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
                 pos = torch.tensor(get_axis_params(char_h, self.up_axis_idx)).to(self.device)
                 q = quat_from_angle_axis(torch.tensor([-0.5 *np.pi]), torch.tensor([0.0,0.0,1.0]) )
-                start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
+                #start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
                 pos[:2] += torch_rand_float(-1., 1., (2, 1), device=self.device).squeeze(1) * 6   # ZL: segfault if we do not randomize the position
                 print('random')
             elif self.actor_init_pos=='back_to_back':
@@ -1190,11 +1191,11 @@ class HumanoidAeMcpPnn6(VecTask):
                    # pos[0] -= 0.1
                     pos[1] += 0.5 # offset the position
                     q = quat_from_angle_axis(torch.tensor([-1.5 *np.pi]), torch.tensor([0.0,0.0,1.0]) )
-                    start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
+                    #start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
                 else:
                     pos = torch.tensor(get_axis_params(char_h, self.up_axis_idx)).to(self.device)
                     q = quat_from_angle_axis(torch.tensor([-0.5 *np.pi]), torch.tensor([0.0,0.0,1.0]) )
-                    start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
+                    #start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
 
             agent_pos.append(pos)
             start_pose.p = gymapi.Vec3(*pos)
@@ -1670,8 +1671,14 @@ class HumanoidAeMcpPnn6(VecTask):
         rigid_body_vel=None,
         rigid_body_ang_vel=None,
     ):
-        #self._humanoid_root_states[env_ids, ..., 0:3] = root_pos.reshape(len(env_ids), num_agents,-1)
+        if(self.root_motion):
+            self._humanoid_root_states[env_ids, ..., 0:2] += root_pos.reshape(len(env_ids), num_agents,-1)[env_ids, ..., 0:2]
         self._humanoid_root_states[env_ids,..., 3:7] = root_rot.reshape(len(env_ids), num_agents,-1)
+
+        if(self.actor_init_pos == 'back_to_back'):
+            q = quat_from_angle_axis(torch.tensor([-0.5 * np.pi]), torch.tensor([0.0,0.0,1.0]) ).to(self.device)
+            self._humanoid_root_states[env_ids,1, 3:7] = q * self._humanoid_root_states[env_ids,1, 3:7] 
+
         self._humanoid_root_states[env_ids,..., 7:10] = root_vel.reshape(len(env_ids), num_agents,-1)
         self._humanoid_root_states[env_ids,..., 10:13] = root_ang_vel.reshape(len(env_ids), num_agents,-1)
         self._dof_pos[env_ids] = dof_pos.reshape(len(env_ids), num_agents, -1)
@@ -1735,8 +1742,9 @@ class HumanoidAeMcpPnn6(VecTask):
         self.modified_ref_body_pos[...,:2] += self.additive_agent_pos[...,:2] 
         self.modified_rb_body_pos[...,:2] += self.additive_agent_pos[...,:2]
 
-        #self.modified_ref_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=cached_root_pos
-        #self.modified_rb_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=  cached_root_pos
+        if(self.root_motion):
+            self.modified_ref_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=cached_root_pos
+            #self.modified_rb_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=  cached_root_pos
 
 
 
