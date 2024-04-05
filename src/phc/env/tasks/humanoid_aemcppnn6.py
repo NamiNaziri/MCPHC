@@ -1182,7 +1182,7 @@ class HumanoidAeMcpPnn6(VecTask):
                 q = quat_from_angle_axis(torch.tensor([-0.5 *np.pi]), torch.tensor([0.0,0.0,1.0]) )
                 start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0) * gymapi.Quat(q[0][0],q[0][1],q[0][2],q[0][3])
                 pos[:2] += torch_rand_float(-1., 1., (2, 1), device=self.device).squeeze(1) * 6   # ZL: segfault if we do not randomize the position
-            
+                print('random')
             elif self.actor_init_pos=='back_to_back':
 
                 if((i-1)%num_agents == 0): #second agent
@@ -1720,7 +1720,7 @@ class HumanoidAeMcpPnn6(VecTask):
         else:
             self.pre_physics_step_none()
 
-        if not normal:
+        if self.actor_init_pos == 'back_to_back':
             a = self.modified_ref_body_pos[:, self.num_bodies: self.num_bodies + self.num_bodies, :]
             b = self.modified_rb_body_pos[:, self.num_bodies: self.num_bodies + self.num_bodies, :]
 
@@ -1734,7 +1734,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.modified_ref_body_pos[...,:2] += self.additive_agent_pos[...,:2] 
         self.modified_rb_body_pos[...,:2] += self.additive_agent_pos[...,:2]
 
-        self.modified_ref_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=cached_root_pos
+        #self.modified_ref_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=cached_root_pos
         #self.modified_rb_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=  cached_root_pos
 
 

@@ -117,14 +117,14 @@ class MotionLibSMPL(MotionLibBase):
             B, J, N = pose_quat_global.shape
 
             ##### ZL: randomize the heading ######
-            if (not flags.im_eval) and (not flags.test):
-                # if True:
-                random_rot = np.zeros(3)
-                random_rot[2] = np.pi * (2 * np.random.random() - 1.0)
-                random_heading_rot = sRot.from_euler("xyz", random_rot)
-                pose_aa[:, :3] = torch.tensor((random_heading_rot * sRot.from_rotvec(pose_aa[:, :3])).as_rotvec())
-                pose_quat_global = (random_heading_rot * sRot.from_quat(pose_quat_global.reshape(-1, 4))).as_quat().reshape(B, J, N)
-                trans = torch.matmul(trans, torch.from_numpy(random_heading_rot.as_matrix().T))
+            # if (not flags.im_eval) and (not flags.test):
+            #     # if True:
+            #     random_rot = np.zeros(3)
+            #     random_rot[2] = np.pi * (2 * np.random.random() - 1.0)
+            #     random_heading_rot = sRot.from_euler("xyz", random_rot)
+            #     pose_aa[:, :3] = torch.tensor((random_heading_rot * sRot.from_rotvec(pose_aa[:, :3])).as_rotvec())
+            #     pose_quat_global = (random_heading_rot * sRot.from_quat(pose_quat_global.reshape(-1, 4))).as_quat().reshape(B, J, N)
+            #     trans = torch.matmul(trans, torch.from_numpy(random_heading_rot.as_matrix().T))
             ##### ZL: randomize the heading ######
 
             trans, trans_fix = MotionLibSMPL.fix_trans_height(pose_aa, trans, curr_gender_beta, mesh_parsers, fix_height_mode = fix_height)
