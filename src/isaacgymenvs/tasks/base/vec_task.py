@@ -226,12 +226,7 @@ class VecTask(Env):
         self.obs_dict = {}
         self.train_dir = config.get('train_dir', 'runs')
 
-        # a folder inside of train_dir containing everything related to a particular experiment
-        self.experiment_dir = os.path.join(self.train_dir, 'MyExpriment')
 
-        self.summaries_dir = os.path.join(self.experiment_dir, 'summaries')
-
-        self.writer = SummaryWriter(self.summaries_dir)
 
     def set_viewer(self):
         """Create the viewer."""
@@ -458,7 +453,7 @@ class VecTask(Env):
                 if evt.action == "QUIT" and evt.value > 0:
                     sys.exit()
                 if evt.action == "reset" and evt.value > 0:
-                    self.reset_idx()
+                    self.reset()
                 elif evt.action == "toggle_viewer_sync" and evt.value > 0:
                     self.enable_viewer_sync = not self.enable_viewer_sync
 
