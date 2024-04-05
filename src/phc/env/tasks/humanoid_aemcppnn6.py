@@ -185,7 +185,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._sampled_motion_ids = torch.arange(self.num_envs* num_agents).to(self.device)
         self._sampled_motion_ids = self._sampled_motion_ids.reshape(self.num_envs, num_agents)
         #self._sampled_motion_ids = torch.zeros(self.num_envs).long().to(self.device)
-        self.motion_file = './data/amass/pkls/amass_copycat_take5_train.pkl'#TODO: cfg['env']['motion_file']
+        self.motion_file = './data/amass/pkls/martial_arts.pkl'#TODO: cfg['env']['motion_file']
         self._load_motion(self.motion_file)
         self.ref_motion_cache = {}
         self._motion_start_times_offset = torch.zeros([self.num_envs, num_agents]).to(self.device)
@@ -1560,14 +1560,15 @@ class HumanoidAeMcpPnn6(VecTask):
         # self._humanoid_root_states[env_ids] = d["root_states"]
         # self._dof_pos[env_ids] = d["dof_pos"]
         # self._dof_vel[env_ids] = d["dof_vel"]
-
+        self._humanoid_root_states[env_ids] = self._initial_humanoid_root_states[env_ids].clone()
         self._reset_ref_state_init(env_ids)
 
         # Original
-        self._humanoid_root_states[env_ids] = self._initial_humanoid_root_states[env_ids].clone()
+        
+        #self._ += self.additive_agent_pos[...,:2] 
         self.additive_agent_pos = self.initial_additive_agent_pos.clone()
-        self._dof_pos[env_ids] = self._initial_dof_pos[env_ids].clone()
-        self._dof_vel[env_ids] = self._initial_dof_vel[env_ids].clone()
+        #self._dof_pos[env_ids] = self._initial_dof_pos[env_ids].clone()
+        #self._dof_vel[env_ids] = self._initial_dof_vel[env_ids].clone()
 
         self._box_states[env_ids] = self._initial_box_states[env_ids].clone()
 
@@ -1669,7 +1670,7 @@ class HumanoidAeMcpPnn6(VecTask):
         rigid_body_vel=None,
         rigid_body_ang_vel=None,
     ):
-        self._humanoid_root_states[env_ids, ..., 0:3] = root_pos.reshape(len(env_ids), num_agents,-1)
+        #self._humanoid_root_states[env_ids, ..., 0:3] = root_pos.reshape(len(env_ids), num_agents,-1)
         self._humanoid_root_states[env_ids,..., 3:7] = root_rot.reshape(len(env_ids), num_agents,-1)
         self._humanoid_root_states[env_ids,..., 7:10] = root_vel.reshape(len(env_ids), num_agents,-1)
         self._humanoid_root_states[env_ids,..., 10:13] = root_ang_vel.reshape(len(env_ids), num_agents,-1)
@@ -1695,7 +1696,7 @@ class HumanoidAeMcpPnn6(VecTask):
         # actions *= 0
 
         motion_times = (self.progress_buf.unsqueeze(1).repeat(1, num_agents) ) * self.dt + self._motion_start_times + self._motion_start_times_offset # + 1 for target. 
-        motion_times[:,1] = 0 #making sure red character stays in T pose
+        #motion_times[:,1] = 0 #making sure red character stays in T pose (plays only the first frame)
         motion_res = self._get_state_from_motionlib_cache(self._sampled_motion_ids.flatten(), motion_times.flatten(), self._global_offset.reshape(self.num_envs * num_agents, 3))
         root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, smpl_params, limb_weights, pose_aa, self.ref_rb_pos, ref_rb_rot, ref_body_vel, ref_body_ang_vel = \
                 motion_res["root_pos"], motion_res["root_rot"], motion_res["dof_pos"], motion_res["root_vel"], motion_res["root_ang_vel"], motion_res["dof_vel"], \
