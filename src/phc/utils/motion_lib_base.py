@@ -212,7 +212,7 @@ class MotionLibBase():
         else:
             sample_idxes = torch.remainder(torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions ).to(self._device)
         #sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
-        #sample_idxes = torch.full((num_motion_to_load,), 4) #TODO
+        sample_idxes = torch.full((num_motion_to_load,), 4) #TODO
 
         # import ipdb; ipdb.set_trace()
         self._curr_motion_ids = sample_idxes
@@ -257,14 +257,17 @@ class MotionLibBase():
             worker = mp.Process(target=self.load_motion_with_skeleton, args=worker_args)
             print('-test')
             worker.start()
-        #res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
         print(num_motion_to_load)
+        
+        
         if(num_motion_to_load < 10):
             res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
             #res_acc = torch.load('test_anim_short.pkl')
         else:
-            res_acc = torch.load('test_anim.pkl')
+           res_acc = torch.load('test_anim.pkl')
+        #res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
         #torch.save(res_acc, "test_anim.pkl")
+        #print('saved')
         for i in tqdm(range(len(jobs) - 1)):
             res = queue.get()
             res_acc.update(res)

@@ -20,7 +20,7 @@ params:
         sigma_init:
           name: const_initializer
           val: 0
-        fixed_sigma: False
+        fixed_sigma: True
 
     mlp:
       units: [1024, 512]

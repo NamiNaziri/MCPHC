@@ -13,7 +13,7 @@ if __name__ == "__main__":
     #train_command = ['singularity', 'run', '--nv', '--bind', '/scratch', 'conda.sif','python', f'triton/{args.experiment}/phc/train.py', f'train.params.config.full_experiment_name="{args.experiment}', 'task=HumanoidAeMcpPnn6', 'task.env.numEnvs=512', 'headless=True', 'test=False', 'train.params.config.minibatch_size=8192', '+debug1=FALSE']
     #test_command =  ['singularity', 'run', '--nv', '--bind', '/scratch', 'opengl.sif','python', 'new_run_copy.py ', '--experiment', f'{args.experiment}', f'train.params.config.full_experiment_name="{args.experiment}']
 
-    test_command = f'python triton/{args.experiment}/phc/train.py task=HumanoidAeMcpPnn6 task.env.numEnvs=1 headless=False test=True train.params.config.minibatch_size=1 checkpoint=/home/naminaziri/scratch/Final_Git/Final_scratch/MCPHC/runs/{args.experiment}/nn/HumanoidAeMcpPnn6PPO.pth +debug1={args.debug1} +pythonpath={args.experiment}'
+    test_command = f'python triton/{args.experiment}/phc/train.py task=HumanoidAeMcpPnn6 task.env.numEnvs=2 headless=False test=True train.params.config.minibatch_size=2 checkpoint=/home/naminaziri/scratch/AGit/MCPHC/runs/{args.experiment}/nn/HumanoidAeMcpPnn6PPO.pth +debug1={args.debug1} +pythonpath={args.experiment} task.env.ae_type="none" task.env.actor_init_pos="random" task.env.root_motion=True'
 
 
     #thread.start_new_thread(os.system, train_command)

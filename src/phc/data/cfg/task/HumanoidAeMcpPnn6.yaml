@@ -12,8 +12,10 @@ env:
   isFlagrun: False
   enableDebugVis: False
 
-  ae_type: "ae"  #Can be {ae, vae, none}
-  actor_init_pos: "random" # Can be {random, back_to_back}
+  clipActions: 1.0
+
+  ae_type: "none"  #Can be {ae, vae, none}
+  actor_init_pos: "static" # Can be {static, random, back_to_back}
   root_motion: True
 
   bias_offset: False
