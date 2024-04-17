@@ -14,7 +14,7 @@ env:
 
   clipActions: 1.0
 
-  ae_type: "none"  #Can be {ae, vae, none}
+  ae_type: "cvae"  #Can be {ae, vae, cvae, none}
   actor_init_pos: "static" # Can be {static, random, back_to_back}
   root_motion: True
 

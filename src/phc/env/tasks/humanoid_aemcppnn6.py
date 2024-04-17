@@ -32,7 +32,7 @@ import os
 
 import torch
 import multiprocessing
-
+from scipy.spatial.transform import Rotation
 from isaacgym import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
@@ -55,17 +55,17 @@ from scipy.spatial.transform import Rotation as sRot
 import gc
 from phc.utils.draw_utils import agt_color, get_color_gradient
 
-from phc.utils.motion_lib_smpl import MotionLibSMPL 
+from phc.utils.motion_lib_smpl import MotionLibSMPL
 import re
 
 #### NOTE: VERY IMPORTANT NOTE #####
 # The memory layout of the actors are very important, Currently, first all of the humanoid actors are instansiated, then markers and then boxes.
-# Humanoid actors being first directly impacts the indexing in setup_tensor function. so if you make change to the way actors are created, you should 
+# Humanoid actors being first directly impacts the indexing in setup_tensor function. so if you make change to the way actors are created, you should
 # also adjust the setup_tensor function.
 
 #TODO: at the moment because of shape of humaniod root, yyou won't be able to run with one agent in multi envs
 angle = 0.72 *np.pi
-num_agents = 2
+num_agents = 1
 first_agent = 0
 second_agent = 1
 main_agent = first_agent
@@ -212,9 +212,13 @@ class HumanoidAeMcpPnn6(VecTask):
             ae_dict = torch.load(f"{proj_dir}/good/ae2.pkl")
         elif self.ae_type == "vae":
             ae_dict = torch.load(f"{proj_dir}/good/vae11.0.pkl")
+        elif self.ae_type =="cvae":
+            self.sk_tree = SkeletonTree.from_mjcf(f"{proj_dir}/data/mjcf/smpl_humanoid_1.xml")
+            ae_dict = torch.load(f"{proj_dir}/good/vae_005000.pkl")
+
         else:
             ae_dict = torch.load(f"{proj_dir}/good/ae2.pkl")
-        
+
         for line in ae_dict['imports'].split("\n"):
             exec(line, globals())
         exec(ae_dict['model_src'])
@@ -255,7 +259,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.rew_hist = torch.zeros((self.num_envs, self.hlc_control_freq_inv), device=self.device, dtype=torch.float)
 
         return
-    
+
     def _load_motion(self, motion_file):
         assert (self._dof_offsets[-1] == self.num_dof)
         if self.smpl_humanoid:
@@ -267,7 +271,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self._motion_lib = MotionLib(motion_file=motion_file, dof_body_ids=self._dof_body_ids, dof_offsets=self._dof_offsets, key_body_ids=self._key_body_ids.cpu().numpy(), device=self.device)
 
         return
-    
+
     def _get_state_from_motionlib_cache(self, motion_ids, motion_times, offset=None):
         ## Cache the motion + offset
         if offset is None  or not "motion_ids" in self.ref_motion_cache or self.ref_motion_cache['offset'] is None or len(self.ref_motion_cache['motion_ids']) != len(motion_ids) or len(self.ref_motion_cache['offset']) != len(offset) \
@@ -370,7 +374,7 @@ class HumanoidAeMcpPnn6(VecTask):
         # create some wrapper tensors for different slices
         self._dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         dofs_per_env = self._dof_state.shape[0] // self.num_envs
-        
+
         # TODO: ask if dof_state only used for humanoids!? if not this should be changed to use the prev solution but for agent lists
 
         #self._dof_pos = self._dof_state.view(self.num_envs, dofs_per_env, 2)[..., main_agent * self.num_dof: main_agent * self.num_dof + self.num_dof, 0]
@@ -387,7 +391,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._rigid_body_state_reshaped = self._rigid_body_state.view(self.num_envs, bodies_per_env, 13) # shape [num_env, num_bodies * num_agents + _num_joints * num_markers(should be equalt to num_agents) + num_boxes, 13]
         self._humanoid_rigid_body_state_reshaped = self._rigid_body_state_reshaped[..., : num_agents * self.num_bodies, :].view(self.num_envs, num_agents, self.num_bodies, 13)
         # self._num_joints is used for red dots #+1 is for the box acotr. if we have more boex should be more
-        
+
         self._rigid_body_pos = self._humanoid_rigid_body_state_reshaped[..., 0:3]
         self._initial_rigid_body_pos = self._rigid_body_pos.clone()
         self._rigid_body_rot = self._humanoid_rigid_body_state_reshaped[..., 3:7]
@@ -405,7 +409,7 @@ class HumanoidAeMcpPnn6(VecTask):
         #TODO: maybe this also has to be changed for each character DONE: Did this!
         contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
         self._contact_forces = contact_force_tensor.view(self.num_envs, bodies_per_env, 3)[..., :self.num_bodies * num_agents, :]
-    
+
         self._terminate_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
 
         self._build_termination_heights()
@@ -694,7 +698,11 @@ class HumanoidAeMcpPnn6(VecTask):
             return self._num_self_obs * (self.past_track_steps + 1)
 
     def get_action_size(self):
-        return 12 * num_agents
+        if(self.ae_type == 'cvae'):
+
+            return (13 + 2 + 16) * num_agents #for ys + latent space dim + root xy
+        else:
+            return 10 * num_agents
         # return self._num_actions
 
     def get_dof_action_size(self):
@@ -775,9 +783,6 @@ class HumanoidAeMcpPnn6(VecTask):
 
         if (len(env_ids) > 0):
 
-
-            if 0 in env_ids:
-                self.epoch_count += 1
             self._reset_actors(env_ids)  # this funciton calle _set_env_state, and should set all state vectors
             self._reset_env_tensors(env_ids)
 
@@ -807,7 +812,7 @@ class HumanoidAeMcpPnn6(VecTask):
         return
 
     def _reset_env_tensors(self, env_ids):
-        
+
         env_ids_int32 = self._humanoid_actor_ids[env_ids]
         new_env_ids_int32 = torch.cat([torch.arange(start, start + num_agents, device=self.device, dtype=torch.int32) for start in env_ids_int32])
         #env_ids_int32 = torch.arange(start=env_ids_int32, end=env_ids_int32 + num_agents , device=self.device, dtype=torch.int32)
@@ -815,7 +820,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(self._box_actor_ids), len(self._box_actor_ids))
         self.gym.set_dof_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._dof_state), gymtorch.unwrap_tensor(new_env_ids_int32), len(new_env_ids_int32))
 
-        
+
         # for env_ptr, humanoid_ptr in zip(self.envs, self.humanoid_handles):
         #     rbs = self.gym.get_actor_rigid_body_states(env_ptr, humanoid_ptr, gymapi.STATE_ALL)
         #     self.gym.set_actor_rigid_body_states(self.gym, env_ptr, humanoid_ptr, gymtorch.unwrap_tensor(self._rigid_body_state), self.num_bodies)
@@ -893,6 +898,7 @@ class HumanoidAeMcpPnn6(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert (False)
 
+        self._num_self_obs = 624
         # Account for all agents
         self._num_self_obs *= num_agents
 
@@ -1035,7 +1041,7 @@ class HumanoidAeMcpPnn6(VecTask):
                     actuator_props = self.gym.get_asset_actuator_properties(humanoid_asset)
                     motor_efforts = [prop.motor_effort for prop in actuator_props]
 
-                    sk_tree = SkeletonTree.from_mjcf(asset_file_real)
+                    self.sk_tree = SkeletonTree.from_mjcf(asset_file_real)
 
                     # create force sensors at the feet
                     right_foot_idx = self.gym.find_asset_rigid_body_index(humanoid_asset, "L_Ankle")
@@ -1101,7 +1107,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.motor_efforts = to_torch(motor_efforts, device=self.device)
         self.torso_index = 0
         self.num_bodies = self.gym.get_asset_rigid_body_count(humanoid_asset)
-        
+
         self.num_dof = self.gym.get_asset_dof_count(humanoid_asset)
         self.num_asset_joints = self.gym.get_asset_joint_count(humanoid_asset)
         self.humanoid_handles = []
@@ -1118,7 +1124,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.additive_agent_pos = torch.cat(agent_pos, dim=0).view(self.num_envs, num_agents,-1).clone()
         self.additive_agent_pos = self.additive_agent_pos.unsqueeze(2).repeat(1, 1, 24, 1).reshape(self.num_envs,num_agents * 24,3)
         self.initial_additive_agent_pos = self.additive_agent_pos.clone()
-        
+
         print("Humanoid Weights", self.humanoid_masses[:10])
 
         dof_prop = self.gym.get_actor_dof_properties(self.envs[0], self.humanoid_handles[0])
@@ -1164,7 +1170,7 @@ class HumanoidAeMcpPnn6(VecTask):
         #     col_group = self._group_ids[env_id]
         # else:
         #     col_group = env_id  # no inter-environment collision
-        
+
         for i in range(num_agents):
             col_group = env_id  # no inter-environment collision
 
@@ -1180,14 +1186,14 @@ class HumanoidAeMcpPnn6(VecTask):
             #     char_h = 0.89
             char_h = 0.85
             if(self.actor_init_pos == 'static'):
-                if((i-1)%num_agents == 0): #second agent
+                if(num_agents>1 and (i-1)%num_agents == 0): #second agent
                     pos = agent_pos[env_id * num_agents].clone() #get the pos of first agent in this environment
                     pos[0] -= 3
                     pos[1] += 3 # offset the position
                 else:
                     pos = torch.tensor(get_axis_params(char_h, self.up_axis_idx)).to(self.device)
-            if(self.actor_init_pos == 'random'): 
-                   
+            if(self.actor_init_pos == 'random'):
+
                 pos = torch.tensor(get_axis_params(char_h, self.up_axis_idx)).to(self.device)
                 pos[:2] += torch_rand_float(-1., 1., (2, 1), device=self.device).squeeze(1) * 6
 
@@ -1206,7 +1212,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
             agent_pos.append(pos)
             start_pose.p = gymapi.Vec3(*pos)
-            
+
             humanoid_handle = self.gym.create_actor(env_ptr, humanoid_asset, start_pose,"humanoid{:d}".format(i), col_group, col_filter, 0)
             self.gym.enable_actor_dof_force_sensors(env_ptr, humanoid_handle)
             mass_ind = [prop.mass for prop in self.gym.get_actor_rigid_body_properties(env_ptr, humanoid_handle)]
@@ -1223,7 +1229,7 @@ class HumanoidAeMcpPnn6(VecTask):
             masses = [masses[group].sum() for group in self.limb_weight_group]
             humanoid_limb_weight = torch.tensor(limb_lengths + masses)
             self.humanoid_limb_and_weights.append(humanoid_limb_weight)  # ZL: attach limb lengths and full body weight.
-            
+
             percentage = 1 - np.clip((humanoid_mass - 70) / 70, 0, 1)
             if  i == 0:
                 color_vec = gymapi.Vec3(*get_color_gradient(percentage, "Greens"))
@@ -1231,7 +1237,7 @@ class HumanoidAeMcpPnn6(VecTask):
                 color_vec = gymapi.Vec3(*get_color_gradient(percentage, "Reds"))
             else:
                 color_vec = gymapi.Vec3(*get_color_gradient(percentage, "Blues"))
-           
+
 
             for j in range(self.num_bodies):
                 self.gym.set_rigid_body_color(env_ptr, humanoid_handle, j, gymapi.MESH_VISUAL, color_vec)
@@ -1428,27 +1434,27 @@ class HumanoidAeMcpPnn6(VecTask):
 
         #TODO: THese all should be self._rigid_body_pos !?
         #first_char_hands_pos = self.ref_body_pos[:,[self._body_names.index("R_Hand"),self._body_names.index("L_Hand")],:].clone()
-        
+
         #second_char_full_body_pos = self.ref_body_pos[:,24:,:].clone()
         #print(self.step_count)
         self.rew_buf[:]= compute_humanoid_reward(
-            
-            self._contact_forces.reshape(-1,2,24,3)[:,1,self.contact_bodies_index,:],
-            self.modified_ref_body_pos, #TODO: this should be self._rigid_body_pos.reshape(self.num_envs,num_agents,24,3)
+
+            self._rigid_body_vel,
+            self._rigid_body_pos, #TODO: this should be self._rigid_body_pos.reshape(self.num_envs,num_agents,24,3)
             self.modified_rb_body_pos,
             self._corrected_initial_humanoid_root_pos
         )
         return
 
     def _compute_reset(self):
-        
+
         self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
-        self.reset_buf, 
+        self.reset_buf,
         self.progress_buf,
         self._contact_forces,
         self._contact_body_ids,
         self._rigid_body_pos.reshape(self.num_envs, num_agents * self.num_bodies,3),
-        self.max_episode_length, 
+        self.max_episode_length,
         self._enable_early_termination,
         self._termination_heights)
         return
@@ -1474,20 +1480,23 @@ class HumanoidAeMcpPnn6(VecTask):
             r_body_ang_vel,
             env_ids)
 
-        #TODO: NOTE: For now i'm having issue with concating multi character obs with box, so i'm just ignoring box observation 
-        
+        #TODO: NOTE: For now i'm having issue with concating multi character obs with box, so i'm just ignoring box observation
+
         # Concatenate box state
         # obs = torch.cat([obs, self._box_states[env_ids]], dim=-1)
 
         # Currently the obs is shape of (num_envs*num_agents, 358) but the obs_buf is looking for (num_envs, num_agents*358)
-        
+
         if env_ids is None:
             new_obs = obs.clone().reshape(self.num_envs, -1)
-            self.obs_buf[:] = torch.cat([new_obs], dim=-1)
+            # self.obs_buf[:] = torch.cat([new_obs[...,358:]], dim=-1)
+            self.obs_buf[:] = torch.cat([r_body_pos,r_body_rot, r_body_vel, r_body_ang_vel, self.modified_rb_body_pos, self.ref_body_vel,self.ref_rb_rot, self.ref_body_ang_vel ], dim=-1).reshape(self.obs_buf.shape[0],-1)
+            # self.obs_buf = self.obs_buf
         else:
             new_obs = obs.clone().reshape(self.num_envs, -1)
-            self.obs_buf[env_ids] = torch.cat([new_obs], dim=-1)
-
+            # self.obs_buf[env_ids] = torch.cat([new_obs[...,358:]], dim=-1)
+            self.obs_buf[:] = self.obs_root_pos.reshape(self.num_envs, -1)
+        #print(self.obs_buf)
         return obs
 
 #TODO: fix the function to use env_ids
@@ -1572,9 +1581,11 @@ class HumanoidAeMcpPnn6(VecTask):
         self._humanoid_root_states[env_ids] = self._initial_humanoid_root_states[env_ids].clone()
         self._reset_ref_state_init(env_ids)
         self._corrected_initial_humanoid_root_pos = self._humanoid_root_states.clone()[..., 0:2]
+        #print(self._corrected_initial_humanoid_root_pos)
+        self.obs_root_pos = self._humanoid_root_states.clone()[..., 0:3]
         # Original
-        
-        #self._ += self.additive_agent_pos[...,:2] 
+
+        #self._ += self.additive_agent_pos[...,:2]
         self.additive_agent_pos = self.initial_additive_agent_pos.clone()
         #self._dof_pos[env_ids] = self._initial_dof_pos[env_ids].clone()
         #self._dof_vel[env_ids] = self._initial_dof_vel[env_ids].clone()
@@ -1602,18 +1613,24 @@ class HumanoidAeMcpPnn6(VecTask):
         #self._global_offset[env_ids] *= 0  # Reset the global offset when resampling.
         #self._cycle_counter[env_ids] = 0
 
-        
+
         num_envs = env_ids.shape[0]
         motion_ids, motion_times, root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, rb_pos, rb_rot, body_vel, body_ang_vel = self._sample_ref_state(env_ids)
+        self.modified_rb_body_pos  = rb_pos.clone()
+        self.ref_body_vel =body_vel.clone()
+        self.ref_rb_rot= rb_rot.clone()
+        self.ref_body_ang_vel=body_ang_vel.clone()
+
         self.anim_root_rot_yaw_cache = torch_utils.get_euler_xyz(root_rot)[2]
-        start_indices = np.arange(self.num_envs) * num_agents 
+        start_indices = np.arange(self.num_envs) * num_agents
         end_indices = np.arange(self.num_envs) * num_agents + 1
         # Slice the cache array and perform the calculation
-        self.new_angles = self.anim_root_rot_yaw_cache[start_indices] + np.pi - self.anim_root_rot_yaw_cache[end_indices]
-        self.new_angles = self.new_angles.unsqueeze(1).repeat(1, 24).unsqueeze(-1)
-        
+        if self.actor_init_pos == 'back_to_back':
+            self.new_angles = self.anim_root_rot_yaw_cache[start_indices] + np.pi - self.anim_root_rot_yaw_cache[end_indices]
+            self.new_angles = self.new_angles.unsqueeze(1).repeat(1, 24).unsqueeze(-1)
 
-        
+
+
 
     def _reset_ref_state_init(self, env_ids):
         #self._load_motion(self.motion_file)
@@ -1621,10 +1638,10 @@ class HumanoidAeMcpPnn6(VecTask):
         self._global_offset[env_ids] *= 0  # Reset the global offset when resampling.
         #self._cycle_counter[env_ids] = 0
 
-        
+
         num_envs = env_ids.shape[0]
         motion_ids, motion_times, root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, rb_pos, rb_rot, body_vel, body_ang_vel = self._sample_ref_state(env_ids)
-        
+
         # if flags.debug:
         # print('raising for debug')
         # root_pos[..., 2] += 0.5
@@ -1640,9 +1657,9 @@ class HumanoidAeMcpPnn6(VecTask):
         self._motion_start_times[env_ids] = motion_times.reshape(len(env_ids), num_agents)
         self._sampled_motion_ids[env_ids] = motion_ids.reshape(len(env_ids), num_agents)
         return
-    
+
     def _sample_ref_state(self, env_ids):
-        
+
         num_envs = env_ids.shape[0]
 
         '''if (self._state_init == HumanoidAMP.StateInit.Random or self._state_init == HumanoidAMP.StateInit.Hybrid):
@@ -1652,7 +1669,8 @@ class HumanoidAeMcpPnn6(VecTask):
         else:
             assert (False), "Unsupported state initialization strategy: {:s}".format(str(self._state_init))
         '''
-        motion_times = torch.zeros(num_envs * num_agents, device=self.device)
+        #motion_times = torch.rand(num_envs * num_agents, device=self.device)
+        motion_times = self._motion_lib.sample_time(self._sampled_motion_ids[env_ids].flatten().numpy())
 
         if self.smpl_humanoid :
             motion_res = self._get_state_from_motionlib_cache(self._sampled_motion_ids[env_ids].flatten(), motion_times, self._global_offset[env_ids].reshape(num_envs * num_agents, 3)) #TODO: change this to len(env_ids) instead of num_envs
@@ -1663,8 +1681,21 @@ class HumanoidAeMcpPnn6(VecTask):
         else:
             root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, key_pos = self._motion_lib.get_motion_state(self._sampled_motion_ids[env_ids].flatten(), motion_times)
             rb_pos, rb_rot = None, None
-            
         return self._sampled_motion_ids[env_ids], motion_times, root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, ref_rb_pos, ref_rb_rot, ref_body_vel, ref_body_ang_vel
+
+    def sample_time(self, motion_ids, truncate_time=None):
+        n = len(motion_ids)
+        phase = np.random.uniform(low=0.0, high=1.0, size=motion_ids.shape)
+
+        motion_len = self._motion_lib._motion_lengths[motion_ids]
+        if (truncate_time is not None):
+            assert(truncate_time >= 0.0)
+            motion_len -= truncate_time
+
+        motion_time = phase * motion_len
+
+        return motion_time
+
     def _set_env_state(
         self,
         env_ids,
@@ -1679,7 +1710,7 @@ class HumanoidAeMcpPnn6(VecTask):
         rigid_body_vel=None,
         rigid_body_ang_vel=None,
     ):
-        
+
         if(self.root_motion):
             self._humanoid_root_states[env_ids, ..., 0:2] += root_pos.reshape(len(env_ids), num_agents,-1)[..., 0:2]
         self._humanoid_root_states[env_ids,..., 3:7] = root_rot.reshape(len(env_ids), num_agents,-1)
@@ -1703,38 +1734,45 @@ class HumanoidAeMcpPnn6(VecTask):
             self._reset_rb_rot = self._rigid_body_rot[env_ids].clone()
             self._reset_rb_vel = self._rigid_body_vel[env_ids].clone()
             self._reset_rb_ang_vel = self._rigid_body_ang_vel[env_ids].clone()
-            
+
         return
 
 
     def pre_physics_step(self, actions):
         # if flags.debug:
         # actions *= 0
-
-        motion_times = (self.progress_buf.unsqueeze(1).repeat(1, num_agents) ) * self.dt + self._motion_start_times + self._motion_start_times_offset # + 1 for target. 
+        #print(actions)
+        motion_times = (self.progress_buf.unsqueeze(1).repeat(1, num_agents) ) * self.dt + self._motion_start_times + self._motion_start_times_offset # + 1 for target.
+        #motion_times *=0
         #motion_times[:,1] = 0 #making sure red character stays in T pose (plays only the first frame)
         motion_res = self._get_state_from_motionlib_cache(self._sampled_motion_ids.flatten(), motion_times.flatten(), self._global_offset.reshape(self.num_envs * num_agents, 3))
-        root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, smpl_params, limb_weights, pose_aa, self.ref_rb_pos, ref_rb_rot, ref_body_vel, ref_body_ang_vel = \
+        root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, smpl_params, limb_weights, pose_aa, self.ref_rb_pos, self.ref_rb_rot, self.ref_body_vel, self.ref_body_ang_vel = \
                 motion_res["root_pos"], motion_res["root_rot"], motion_res["dof_pos"], motion_res["root_vel"], motion_res["root_ang_vel"], motion_res["dof_vel"], \
                 motion_res["motion_bodies"], motion_res["motion_limb_weights"], motion_res["motion_aa"], motion_res["rg_pos"], motion_res["rb_rot"], motion_res["body_vel"], motion_res["body_ang_vel"]
-        
+
+
+        #self.ref_body_vel *= 0 
         #print(self.ref_rb_pos[:,[0],:2])
         #motion_res["rg_pos"][:, :, :2]  -=  motion_res["rg_pos"][:,[0],:2]
         #old_ref_rb_pos = self.ref_rb_pos.clone()
-        cached_root_pos =  self.ref_rb_pos[:,[0],:2].clone()
-        self.ref_rb_pos[:, :, :2]  -=  self.ref_rb_pos[:,[0],:2]
+        # cached_root_pos =  self.ref_rb_pos[:,[0],:2].clone()
+        # self.ref_rb_pos[:, :, :2]  -=  self.ref_rb_pos[:,[0],:2]
 
         full_action = actions.to(self.device).clone().view(self.num_envs*num_agents,-1)
-        self.input_lats = full_action[:,:10]
+        self.input_lats = full_action.clone()
+        #print(self.input_lats)
         if len(self.input_lats.shape) == 1:
             self.input_lats = self.input_lats[None]
-            
-        self.my_lats = self.ae.encoder.forward(self.ae.rms.normalize(self.ref_rb_pos.reshape(self.ref_rb_pos.shape[0], -1)))
+
 
         if self.ae_type == "ae":
-            self.pre_physics_step_ae(input_lats_importance=1e0,input_my_lats_importance=1e0,force_t_pose=False)
+            self.my_lats = self.ae.encoder.forward(self.ae.rms.normalize(self.ref_rb_pos.reshape(self.ref_rb_pos.shape[0], -1)))
+            self.pre_physics_step_ae(input_lats_importance=0,input_my_lats_importance=1e0,force_t_pose=False)
         elif self.ae_type == "vae":
+            self.my_lats = self.ae.encoder.forward(self.ae.rms.normalize(self.ref_rb_pos.reshape(self.ref_rb_pos.shape[0], -1)))
             self.pre_physics_step_vae(input_lats_importance=1e0,input_my_lats_importance=1e0,force_t_pose=False)
+        elif self.ae_type == "cvae":
+            self.pre_physics_step_cvae(motion_res, input_lats_importance=0,input_my_lats_importance=1e0,force_t_pose=False)
         else:
             self.pre_physics_step_none()
 
@@ -1742,29 +1780,30 @@ class HumanoidAeMcpPnn6(VecTask):
             a = self.modified_ref_body_pos[:, self.num_bodies: self.num_bodies + self.num_bodies, :]
             b = self.modified_rb_body_pos[:, self.num_bodies: self.num_bodies + self.num_bodies, :]
 
-            angle= self.new_angles[:,0]#self.anim_root_rot_yaw_cache[ (num_agents * ii)] + np.pi - self.anim_root_rot_yaw_cache[1 + (num_agents * ii)] 
+            angle= self.new_angles[:,0]#self.anim_root_rot_yaw_cache[ (num_agents * ii)] + np.pi - self.anim_root_rot_yaw_cache[1 + (num_agents * ii)]
             rotation_axis =torch.tensor([0.0,0.0,1.0]).repeat(self.num_envs,1).to(self.device)
             #print(angle)
             for(kk) in range(24):
                 b[:,kk] = self.rotate_vector(b[:,kk],rotation_axis , angle)
                 a[:,kk] = self.rotate_vector(a[:,kk],rotation_axis, angle)
 
-        self.modified_ref_body_pos[...,:2] += self.additive_agent_pos[...,:2] 
+        self.modified_ref_body_pos[...,:2] += self.additive_agent_pos[...,:2]
         self.modified_rb_body_pos[...,:2] += self.additive_agent_pos[...,:2]
 
         #allow changes in root using policy
-        #print(full_action.reshape(self.num_envs, num_agents, -1)[...,10:])
-        modified_ref_body_root_pos = self.modified_ref_body_pos.reshape(self.num_envs,num_agents,-1,3)
-        modified_ref_body_root_pos[...,:2] += full_action.reshape(self.num_envs, num_agents, -1)[...,np.newaxis,10:].repeat(1,1,24,1)
+        #print(full_action.reshape(self.num_envs, num_agents, -1)[...,np.newaxis,:].repeat(1,1,24,1).shape)
 
-        if(self.root_motion):
-            self.modified_ref_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=cached_root_pos
-            self.modified_rb_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=  cached_root_pos
+        # if(self.root_motion):
+        #     self.modified_ref_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=cached_root_pos
+        #     self.modified_rb_body_pos.reshape(self.num_envs * num_agents,-1, 3)[...,:2] +=  cached_root_pos
 
+        self.modified_ref_body_pos_no_physics = self.modified_ref_body_pos
+        #modified_ref_body_root_pos = self.modified_ref_body_pos_no_physics.reshape(self.num_envs,num_agents,-1,3)
+        #modified_ref_body_root_pos[...,:2] += full_action.reshape(self.num_envs, num_agents, -1)[...,np.newaxis,:].repeat(1,1,24,1)
+        self.obs_root_pos = self.modified_rb_body_pos.reshape(self.num_envs * num_agents,-1, 3).clone()[:,0,:]
 
-
-        if(self.num_envs <=2): # visualized only when we have small num of environment (mostly used when we want to evaluate)
-            self.visualized_ref_body_pos = self.modified_ref_body_pos.clone()
+        if(self.num_envs <=15): # visualized only when we have small num of environment (mostly used when we want to evaluate)
+            self.visualized_ref_body_pos = self.modified_ref_body_pos_no_physics.clone()
             self.visualized_rb_body_pos = self.modified_rb_body_pos.clone()
 
             if(self.num_envs == 1):
@@ -1786,13 +1825,13 @@ class HumanoidAeMcpPnn6(VecTask):
             self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self._root_states), gymtorch.unwrap_tensor(self._marker_actor_ids), len(self._marker_actor_ids))
 
         # NOTE: In Nam Hee's code this is set to zero
-        self.ref_body_vel = ref_body_vel #0.5 * (self._rigid_body_vel.reshape(-1,24,3) + ref_body_vel)
+        #self.ref_body_vel = ref_body_vel #0.5 * (self._rigid_body_vel.reshape(-1,24,3) + ref_body_vel)
 
         self.step_count += 1
         self.progress_buf += 1
 
         return
-    
+
     def pre_physics_step_ae(self,input_lats_importance=1e0,input_my_lats_importance=1e0, force_t_pose=False):
 
         self.my_lats = self.ae.encoder.forward(self.ae.rms.normalize(self.ref_rb_pos.reshape(self.ref_rb_pos.shape[0], -1)))
@@ -1804,12 +1843,12 @@ class HumanoidAeMcpPnn6(VecTask):
         if(force_t_pose):
 
             #Override to ensure the second character stays in the T-pose.
-            self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs,num_agents, -1, 3) 
+            self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs,num_agents, -1, 3)
             self.ref_body_pos[:,1,...] = self.ref_rb_pos.reshape(self.num_envs,num_agents, -1, 3)[:,1,...].clone()
 
-        self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3) 
+        self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
 
-        self.modified_ref_body_pos = self.ref_body_pos.clone() 
+        self.modified_ref_body_pos = self.ref_body_pos.clone()
         self.modified_rb_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
 
     def pre_physics_step_vae(self,input_lats_importance=1e0,input_my_lats_importance=1e0, force_t_pose=False):
@@ -1824,23 +1863,206 @@ class HumanoidAeMcpPnn6(VecTask):
         if(force_t_pose):
 
             #Override to ensure the second character stays in the T-pose.
-            self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs,num_agents, -1, 3) 
+            self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs,num_agents, -1, 3)
             self.ref_body_pos[:,1,...] = self.ref_rb_pos.reshape(self.num_envs,num_agents, -1, 3)[:,1,...].clone()
 
-        self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3) 
+        self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
 
-        self.modified_ref_body_pos = self.ref_body_pos.clone() 
+        self.modified_ref_body_pos = self.ref_body_pos.clone()
         self.modified_rb_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
+
+    def pre_physics_step_cvae(self,motion_res, input_lats_importance=1e0,input_my_lats_importance=1e0, force_t_pose=False):
+        #motion_res["rg_pos"]-323
+
+        motion_res["rg_pos"] = motion_res["rg_pos"]+torch.tensor((0,0,0.0323),device=self.device)
+        #make data ready for CVAE
+        
+        rb_rot_sixd = (
+            Rotation.from_quat(motion_res["rb_rot"].reshape(-1, 4))
+            .as_matrix()
+            .reshape((*motion_res["rb_rot"].shape[:-1], 3, 3))[..., :2]
+            .reshape((*motion_res["rb_rot"].shape[:-1], 6))
+        )
+
+        rb_rot_sixd_reshaped = rb_rot_sixd.reshape(-1,24, 3, 2)
+        third_column = np.cross(
+            rb_rot_sixd_reshaped[..., 0], rb_rot_sixd_reshaped[..., 1], axis=-1
+        )
+        rb_rot_rotmat = np.concatenate(
+            [rb_rot_sixd_reshaped, third_column[..., None]], axis=-1
+        )
+        rb_rot_euler = Rotation.from_matrix(rb_rot_rotmat.reshape(-1,3,3)).as_euler('zyx')
+        cached_original_root_yaw = rb_rot_euler.reshape(*rb_rot_sixd_reshaped.shape[:-2], 3)[:,[0],0]
+        rb_rot_euler.reshape(*rb_rot_sixd_reshaped.shape[:-2], 3)[:,:,0] -= cached_original_root_yaw
+        rb_rot_sixd_inv = (
+            Rotation.from_euler('zyx', rb_rot_euler)
+            .as_matrix()
+            .reshape((*rb_rot_sixd_reshaped.shape[:-2], 3, 3))[..., :2]
+            .reshape((*rb_rot_sixd_reshaped.shape[:-2], 6))
+        )
+        #used for sanity check
+        # xs = torch.load('xs.pkl')
+        # encoder_ys = torch.load('ys.pkl')
+        xs = np.concatenate([rb_rot_sixd_inv.reshape(-1, 24, 6)[:, 1:],motion_res["body_ang_vel"].reshape(-1, 24, 3)[:, 1:]],axis=-1)
+        xs = torch.tensor(xs, dtype=torch.float, device=self.device)
+        xs = xs.reshape(xs.shape[0],-1)
+        encoder_ys = np.concatenate(
+            [
+                motion_res["rg_pos"].reshape(-1, 24, 3)[:, 0, -1, None],  # z position
+                rb_rot_sixd_inv.reshape(-1, 24, 6)[:, 0,:],
+                motion_res["body_vel"].reshape(-1, 24, 3)[:, 0,:],
+                motion_res["body_ang_vel"].reshape(-1, 24, 3)[:, 0,:],
+            ],
+            axis=-1,)
+        encoder_ys = torch.tensor(encoder_ys, dtype=torch.float, device=self.device)
+
+        _, decoded, mu, log_var = self.ae.forward(
+                xs,
+                encoder_ys,
+                train_yes=False,
+            )
+
+        intermediate_ys = encoder_ys + input_lats_importance * self.input_lats[:,:13]
+        decoder_ys = intermediate_ys.clone()
+
+        #sixd rotation is index [1:7]
+        cached_intermediate_orientation = self.sixd_to_euler(intermediate_ys[...,1:7])[...,0]
+        cached_intermediate_orientation_yaw_shaped = np.zeros((cached_intermediate_orientation.shape[0], 3))
+        cached_intermediate_orientation_yaw_shaped[:,0] = cached_intermediate_orientation
+        # setting the yaw to zero to use it in the decoder
+        decoder_ys[...,1:7] = torch.tensor(self.sixd_add_root(intermediate_ys[...,1:7], -1 * cached_intermediate_orientation_yaw_shaped), device=self.device).squeeze(1)
+
+        z = input_lats_importance * self.input_lats[:,15:] +  input_my_lats_importance * mu
+
+        cvae_decoded = self.ae.decode(z, decoder_ys)
+        cvae_decoded = cvae_decoded.reshape((cvae_decoded.shape[0], 23, -1))
+        rb_rot_sixd_recon = cvae_decoded[:, :, :6].reshape(-1, 138)
+        rb_rot_sixd_recon = rb_rot_sixd_recon.cpu().detach().numpy()
+
+        rb_pos_reshaped = motion_res["rg_pos"].reshape(-1,24, 3)
+
+
+        #TODO: How should I do this?
+        #TODO: should i delete this?
+        rb_rot_sixd_reshaped = rb_rot_sixd_inv.reshape(-1,24, 3, 2) * 1
+        recon_rot_sixd_reshaped = rb_rot_sixd_reshaped * 1
+        recon_rot_sixd_reshaped[:,1:] = rb_rot_sixd_recon.reshape(-1,23, 3, 2)
+
+        #TODO: should I set the full orientation or only the yaw? ANSWER: ONLY YAW
+
+        #setting full orientation
+        #recon_rot_sixd_reshaped = torch.tensor(self.sixd_add_root(recon_rot_sixd_reshaped, cached_intermediate_orientation), device=self.device)
+        #setting only yaw
+        cached_intermediate_orientation_yaw_shaped[...,0] += cached_original_root_yaw[...,0]
+        recon_rot_sixd_reshaped = torch.tensor(self.sixd_add_root(recon_rot_sixd_reshaped, cached_intermediate_orientation_yaw_shaped), device=self.device)
+        recon_rot_sixd_reshaped = recon_rot_sixd_reshaped.reshape(-1,24, 3, 2)
+
+
+        third_column = np.cross(
+            recon_rot_sixd_reshaped[..., 0],
+            recon_rot_sixd_reshaped[..., 1],
+            axis=-1,
+        )
+        recon_rot_rotmat = np.concatenate(
+            [recon_rot_sixd_reshaped, third_column[..., None]], axis=-1
+        )
+        recon_rot_quat = Rotation.from_matrix(recon_rot_rotmat.reshape(-1,3,3)).as_quat()
+        recon_rot_quat = recon_rot_quat.reshape(-1,24,4)
+        recon_rot_quat =  torch.as_tensor(recon_rot_quat, dtype=torch.float, device = self.device)
+        
+
+        # testing out-of-distribution tracking
+        # q = quat_from_angle_axis(torch.tensor([-1 * np.pi * 0.5 ]).to(self.device), torch.tensor([1.0,1.0,0.0]).to(self.device) )
+        # recon_rot_quat[:,14,:] = quat_mul(q, recon_rot_quat[:,14,:])
+        # recon_rot_quat[:,15,:] = quat_mul(q, recon_rot_quat[:,15,:])
+        # recon_rot_quat[:,16,:] = quat_mul(q, recon_rot_quat[:,16,:])
+        # recon_rot_quat[:,19,:] = quat_mul(q, recon_rot_quat[:,19,:])
+        # recon_rot_quat[:,21,:] = quat_mul(q, recon_rot_quat[:,21,:])
+        # recon_rot_quat[:,10,:] = quat_mul(q, recon_rot_quat[:,10,:])
+        # recon_rot_quat[:,11,:] = quat_mul(q, recon_rot_quat[:,11,:])
+
+        #TODO Should i remove the 0.0323 from the root?
+        mutated_trans = rb_pos_reshaped[:,0,...] * 1
+        #TODO addition or setting?
+        mutated_trans[...,:2] += input_lats_importance * self.input_lats[:,13:15]
+
+        recon_sk_state = SkeletonState.from_rotation_and_root_translation(
+            self.sk_tree,
+            recon_rot_quat,
+            torch.as_tensor(mutated_trans, dtype=torch.float, device = self.device),
+            is_local=False,
+        )
+
+        recon_global_translation = (
+            recon_sk_state.global_translation.detach().cpu().numpy()
+        )
+        recon_global_rotation = (
+            recon_sk_state.global_rotation.detach().cpu().numpy()
+        )
+
+        motion_res["rg_pos"] = motion_res["rg_pos"]-torch.tensor((0,0,0.0323),device=self.device)
+        self.ref_body_pos = recon_sk_state.global_translation.detach().to(self.device)
+
+        if(force_t_pose):
+
+            #Override to ensure the second character stays in the T-pose.
+            self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs,num_agents, -1, 3)
+            self.ref_body_pos[:,1,...] = self.ref_rb_pos.reshape(self.num_envs,num_agents, -1, 3)[:,1,...].clone()
+
+
+
+        self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
+
+        self.modified_ref_body_pos = self.ref_body_pos.clone()
+
+        # testing out-of-distribution tracking
+        # lower_body_name = ['Pelvis', 'L_Hip','L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe',]
+        # lower_body_indecies =  [ self._body_names.index(body_name) for body_name in lower_body_name]
+        # self.modified_ref_body_pos[:,lower_body_indecies,:] =self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()[:,lower_body_indecies,:]
+
+        self.modified_rb_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
+
 
     def pre_physics_step_none(self):
         self.ref_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
         self.modified_ref_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
         self.modified_rb_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
 
+    def sixd_to_euler(self,rb_rot_sixd):
+        rb_rot_sixd_reshaped = rb_rot_sixd.reshape(-1, 3, 2)
+        third_column = np.cross(
+            rb_rot_sixd_reshaped[..., 0], rb_rot_sixd_reshaped[..., 1], axis=-1
+        )
+        rb_rot_rotmat = np.concatenate(
+            [rb_rot_sixd_reshaped, third_column[..., None]], axis=-1
+        )
+        rb_rot_euler = Rotation.from_matrix(rb_rot_rotmat.reshape(-1,3,3)).as_euler('zyx')
+        
+        return rb_rot_euler
 
-
-    def rotate_vector(self, vector, axis, angle):
+    def sixd_add_root(self,rb_rot_sixd, euler_orientation ):
     
+        rb_rot_sixd_reshaped = rb_rot_sixd.reshape(self.num_envs * num_agents, -1, 3, 2)
+        euler_orientation = euler_orientation.reshape(self.num_envs * num_agents,-1,3)
+        third_column = np.cross(
+            rb_rot_sixd_reshaped[..., 0], rb_rot_sixd_reshaped[..., 1], axis=-1
+        )
+        rb_rot_rotmat = np.concatenate(
+            [rb_rot_sixd_reshaped, third_column[..., None]], axis=-1
+        )
+        rb_rot_euler = Rotation.from_matrix(rb_rot_rotmat.reshape(-1,3,3)).as_euler('zyx')
+        
+        rb_rot_euler.reshape(*rb_rot_sixd_reshaped.shape[:-2], 3)[:,:,:] += euler_orientation
+        new_rb_rot_sixd = (
+            Rotation.from_euler('zyx', rb_rot_euler)
+            .as_matrix()
+            .reshape((*rb_rot_sixd_reshaped.shape[:-2], 3, 3))[..., :2]
+            .reshape((*rb_rot_sixd_reshaped.shape[:-2], 6))
+        )
+        return new_rb_rot_sixd
+    
+    def rotate_vector(self, vector, axis, angle):
+
         cos_theta = torch.cos(angle)
         sin_theta = torch.sin(angle)
 
@@ -1850,7 +2072,7 @@ class HumanoidAeMcpPnn6(VecTask):
         rotated_vector = vector * cos_theta + cross_product * sin_theta + axis * dot_product * (1 - cos_theta)
 
         return rotated_vector
-    
+
     def quaternion_to_direction_vector(self, quaternion):
 
         q0, q1, q2, q3 = quaternion
@@ -1872,7 +2094,7 @@ class HumanoidAeMcpPnn6(VecTask):
         # Create and return the direction vector tensor
         direction_vector = torch.tensor([x, y, z], dtype=torch.float32, device=self.device)
         return direction_vector
-    
+
     def physics_step(self):
         for i in range(self.hlc_control_freq_inv):
             #self._rigid_body_pos.reshape(self.num_envs*num_agents, -1)
@@ -1927,7 +2149,7 @@ class HumanoidAeMcpPnn6(VecTask):
             obs = obs[..., :358]
             # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
             # Also, the self.running_mean has to be repeated. we can do this, where it is assigned for the first time (after it is being read from pnn)
-            
+
             #obs = obs.repeat(2,1)
             #g = g.repeat(2,1)
             nail = torch.cat([obs, g], dim=-1)
@@ -1969,12 +2191,12 @@ class HumanoidAeMcpPnn6(VecTask):
                     #    pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
                      #   pd_tar[:, self._dof_names.index("Head") * 3:(self._dof_names.index("Head") * 3 + 3)] = 0
 
-            
+
 
             pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
             self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
-
-            super().physics_step()
+            self.render()
+            #super().physics_step()
             self._refresh_sim_tensors()
 
             # self.post_physics_step()
@@ -2026,7 +2248,7 @@ class HumanoidAeMcpPnn6(VecTask):
         if self.viewer and self.debug_viz:
             self._update_debug_viz()
 
-        # Debugging 
+        # Debugging
         # if flags.debug:
         #     body_vel = self._rigid_body_vel.clone()
         #     speeds = body_vel.norm(dim = -1).mean(dim = -1)
@@ -2040,7 +2262,7 @@ class HumanoidAeMcpPnn6(VecTask):
         if self.viewer:
             self._update_camera()
 
-        
+
         return super().render(mode)
 
     def _build_key_body_ids_tensor(self, key_body_names):
@@ -2118,7 +2340,7 @@ class HumanoidAeMcpPnn6(VecTask):
     def _update_debug_viz(self):
         self.gym.clear_lines(self.viewer)
         return
-    
+
 
     def normalize_vector(self, v):
         norm = torch.norm(v)
@@ -2151,7 +2373,7 @@ class HumanoidAeMcpPnn6(VecTask):
         z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
 
         return torch.tensor([w, x, y, z], device = self.device)
-    
+
     def quaternion_raw_multiply(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
         aw, ax, ay, az = torch.unbind(a, -1)
@@ -2300,45 +2522,39 @@ def compute_humanoid_observations_max(body_pos, body_rot, body_vel, body_ang_vel
     return obs
 
 
-@torch.jit.script
-def compute_humanoid_reward( red_guy_contact_forces, ref_body_pos, ref_rb_pos, initial_humanoid_root_pos):
+#@torch.jit.script
+def compute_humanoid_reward( ref_body_vel, ref_body_pos, ref_rb_pos, initial_humanoid_root_pos):
     # type: ( Tensor, Tensor, Tensor, Tensor) -> Tensor
 
-    
-    # r_hand_repeted = first_char_hands_pos[:,0,:].unsqueeze(1).repeat(1,second_char_full_body_pos.shape[1],1)    # [num_env, 24, 3]
-    # l_hand_repeated = first_char_hands_pos[:,1,:].unsqueeze(1).repeat(1,second_char_full_body_pos.shape[1],1)   # [num_env, 24, 3]
-    # hand_repeated = torch.cat([r_hand_repeted, l_hand_repeated ],dim =1)                                        # [num_env, 48, 3]
-    # second_char_full_body_pos_repeated = second_char_full_body_pos.repeat(1,first_char_hands_pos.shape[1],1)    # [num_env, 48, 3]
+    local_ref_body_pos = ref_body_pos - ref_body_pos[...,[0],:]
+    local_ref_rb_pos= ref_rb_pos - ref_rb_pos[...,[0],:]
+    mse_loss = torch.nn.functional.mse_loss(local_ref_body_pos.reshape(local_ref_body_pos.shape[0],-1), local_ref_rb_pos.reshape(local_ref_rb_pos.shape[0],-1), reduction='none')
+    loss_result = torch.mean(mse_loss,dim=1)
+    imitation_reward = torch.exp(-1 * loss_result)
 
-    # hand_dist_mse_loss = torch.nn.functional.mse_loss(hand_repeated.reshape(hand_repeated.shape[0],-1), second_char_full_body_pos_repeated.reshape(second_char_full_body_pos_repeated.shape[0],-1), reduction='none')
-    # hand_dist_loss_result = torch.mean(hand_dist_mse_loss,dim=1) 
-    # hand_distance_loss = (torch.exp(-1/hand_dist_loss_result))
-
-    # hand_dist = torch.sum(hand_dist_mse_loss.reshape(-1,2,24,3),dim=-1)
-    # hand_dist_avg_dist = torch.mean(hand_dist, dim = -1)
-    # hand_dist_avg_env = torch.mean(hand_dist_avg_dist, dim=0)
-    red_guy_contact_forces_mag = torch.norm(red_guy_contact_forces,dim=-1).squeeze(0)
-    red_guy_contact_forces_mag_r = torch.exp(-1 * (10 ** (-3.8)) * (red_guy_contact_forces_mag ** 2))
-    red_guy_contact_forces_reward = red_guy_contact_forces_mag_r.sum(dim=-1)
-    #red_guy_contact_forces_loss = torch.where(red_guy_contact_forces_mag > 800, torch.tensor(1), torch.tensor(0))
-
-    mse_loss = torch.nn.functional.mse_loss(ref_body_pos.reshape(ref_body_pos.shape[0],-1), ref_rb_pos.reshape(ref_body_pos.shape[0],-1), reduction='none')
-    loss_result = torch.mean(mse_loss,dim=1) 
-    imitation_reward = torch.exp(-1 * (10**3) * loss_result)
+    mse_velocity_loss= torch.nn.functional.mse_loss(
+        ref_body_vel[..., [0],:].reshape(ref_body_vel.shape[0], -1),
+        torch.tensor([1, 0, 0], device=ref_body_vel.device)[None, None, None].repeat_interleave(ref_body_vel.shape[0], 0).reshape(ref_body_vel.shape[0], -1),
+        reduction='none'
+    )
+    velocity_loss_result = torch.mean(mse_velocity_loss, dim=-1)
+    velocity_reward = torch.exp(-1 * velocity_loss_result)
 
     ref_body_root_pos = ref_body_pos.reshape(ref_body_pos.shape[0], -1, 24, 3)[:,:,0,:2]
     # print(ref_body_root_pos)
     # print(initial_humanoid_root_pos)
     # print('--------------')
-    distance_to_init_pos_mse_loss = torch.nn.functional.mse_loss(ref_body_root_pos.reshape(ref_body_root_pos.shape[0],-1), initial_humanoid_root_pos.reshape(initial_humanoid_root_pos.shape[0],-1), reduction='none')
-    distance_to_init_pos_loss_result = torch.mean(distance_to_init_pos_mse_loss,dim=1) 
-    distance_to_init_pos_reward = torch.exp(-1 * (10**3) * distance_to_init_pos_loss_result)
-    #print(loss_result)
-    #alive_reward = progress_buf / (max_episode_length - 1) 
+    distance_to_init_pos_mse_loss = torch.linalg.norm(ref_body_root_pos.reshape(ref_body_root_pos.shape[0],-1) , dim=-1)
+    # distance_to_init_pos_mse_loss = torch.nn.functional.mse_loss(ref_body_root_pos.reshape(ref_body_root_pos.shape[0],-1), initial_humanoid_root_pos.reshape(initial_humanoid_root_pos.shape[0],-1), reduction='none')
+    # distance_to_init_pos_loss_result = torch.mean(distance_to_init_pos_mse_loss,dim=1)
+    distance_to_init_pos_loss_result = distance_to_init_pos_mse_loss
+    #print(distance_to_init_pos_loss_result)
+    distance_to_init_pos_reward = torch.exp(-1 * distance_to_init_pos_loss_result)
+    #print(distance_to_init_pos_reward)
+    #alive_reward = progress_buf / (max_episode_length - 1)
     reward = (
-        0 * imitation_reward + 
-        0 * red_guy_contact_forces_reward +
-        1e0 * distance_to_init_pos_reward
+        1e0 * velocity_reward +
+        1e0 * imitation_reward
     )
     return reward
 
@@ -2350,7 +2566,7 @@ def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_id
     terminated = torch.zeros_like(reset_buf)
     #enable_early_termination
     if (enable_early_termination):
-        
+
         masked_contact_buf = contact_buf.clone()
         masked_contact_buf[:, contact_body_ids, :] = 0
         fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
@@ -2374,7 +2590,7 @@ def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_id
 
         #terminate when contact happens
         #has_fallen = torch.logical_or(fall_contact, fall_height)
-        
+
 
         # first timestep can sometimes still have nonzero contact forces
         # so only check after first couple of steps
@@ -2502,6 +2718,7 @@ def compute_humanoid_observations_smpl_max(body_pos, body_rot, body_vel, body_an
     if root_height_obs:
         obs_list.append(root_h_obs)
     obs_list += [local_body_pos, local_body_rot_obs, local_body_vel, local_body_ang_vel]
+    # obs_list.append(root_pos)
 
     if has_smpl_params:
         obs_list.append(smpl_params)
