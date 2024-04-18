@@ -898,7 +898,7 @@ class HumanoidAeMcpPnn6(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert (False)
 
-        self._num_self_obs = 624
+        self._num_self_obs = 231 + 231 #red + blue guy observation
         # Account for all agents
         self._num_self_obs *= num_agents
 
@@ -1437,12 +1437,16 @@ class HumanoidAeMcpPnn6(VecTask):
 
         #second_char_full_body_pos = self.ref_body_pos[:,24:,:].clone()
         #print(self.step_count)
+
+        #NOTE: the compute reward is called after calculate observation, so the self.blue_obs and self.red_obs are valid
         self.rew_buf[:]= compute_humanoid_reward(
 
             self._rigid_body_vel,
             self._rigid_body_pos, #TODO: this should be self._rigid_body_pos.reshape(self.num_envs,num_agents,24,3)
             self.modified_rb_body_pos,
-            self._corrected_initial_humanoid_root_pos
+            self._corrected_initial_humanoid_root_pos,
+            self.blue_obs,
+            self.red_obs
         )
         return
 
@@ -1485,17 +1489,24 @@ class HumanoidAeMcpPnn6(VecTask):
         # Concatenate box state
         # obs = torch.cat([obs, self._box_states[env_ids]], dim=-1)
 
-        # Currently the obs is shape of (num_envs*num_agents, 358) but the obs_buf is looking for (num_envs, num_agents*358)
-
+        self.blue_obs =  torch.cat([self.blue_rb_root_xyz, self.blue_rb_root_rot_sixd, self.blue_rb_root_vel
+                ,self.blue_rb_root_ang_vel, self.blue_joint_angles, self.blue_joint_ang_vel], dim=-1)
+        self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
+                                self.red_rb_root_ang_vel, self.red_joint_angles, self.red_joint_ang_vel], dim=-1)
+        
         if env_ids is None:
+
             new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[:] = torch.cat([new_obs[...,358:]], dim=-1)
-            self.obs_buf[:] = torch.cat([r_body_pos,r_body_rot, r_body_vel, r_body_ang_vel, self.modified_rb_body_pos, self.ref_body_vel,self.ref_rb_rot, self.ref_body_ang_vel ], dim=-1).reshape(self.obs_buf.shape[0],-1)
+
+
+        
+            self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs ], dim=-1).reshape(self.obs_buf.shape[0],-1)
             # self.obs_buf = self.obs_buf
         else:
             new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[env_ids] = torch.cat([new_obs[...,358:]], dim=-1)
-            self.obs_buf[:] = self.obs_root_pos.reshape(self.num_envs, -1)
+            self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs ], dim=-1).reshape(self.obs_buf.shape[0],-1)
         #print(self.obs_buf)
         return obs
 
@@ -1641,6 +1652,32 @@ class HumanoidAeMcpPnn6(VecTask):
 
         num_envs = env_ids.shape[0]
         motion_ids, motion_times, root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, rb_pos, rb_rot, body_vel, body_ang_vel = self._sample_ref_state(env_ids)
+
+
+        rb_rot_sixd = torch.tensor(
+            Rotation.from_quat(rb_rot.reshape(-1, 4))
+            .as_matrix()
+            .reshape((*rb_rot.shape[:-1], 3, 3))[..., :2]
+            .reshape((*rb_rot.shape[:-1], 6))
+            , device=self.device
+        )
+
+        #TODO: is this correct? setting both observation as the ref anim?
+
+        self.blue_rb_root_xyz = rb_pos[:,0]
+        self.blue_rb_root_rot_sixd = rb_rot_sixd[:,0]
+        self.blue_rb_root_vel = body_vel[:,0]
+        self.blue_rb_root_ang_vel = body_ang_vel[:,0]
+        self.blue_joint_angles = rb_rot_sixd.reshape(self.num_envs * num_agents, -1)
+        self.blue_joint_ang_vel = body_ang_vel.reshape(self.num_envs * num_agents, -1)
+
+        self.red_rb_root_xyz=self.blue_rb_root_xyz
+        self.red_rb_root_rot_sixd =self.blue_rb_root_rot_sixd 
+        self.red_rb_root_vel =self.blue_rb_root_vel 
+        self.red_rb_root_ang_vel =self.blue_rb_root_ang_vel 
+        self.red_joint_angles =self.blue_joint_angles 
+        self.red_joint_ang_vel =self.blue_joint_ang_vel 
+
 
         # if flags.debug:
         # print('raising for debug')
@@ -1875,6 +1912,7 @@ class HumanoidAeMcpPnn6(VecTask):
         #motion_res["rg_pos"]-323
 
         motion_res["rg_pos"] = motion_res["rg_pos"]+torch.tensor((0,0,0.0323),device=self.device)
+        
         #make data ready for CVAE
         
         rb_rot_sixd = (
@@ -1916,6 +1954,29 @@ class HumanoidAeMcpPnn6(VecTask):
             axis=-1,)
         encoder_ys = torch.tensor(encoder_ys, dtype=torch.float, device=self.device)
 
+
+        self.blue_rb_root_xyz = motion_res["rg_pos"][:,0]
+        self.blue_rb_root_rot_sixd = torch.tensor(rb_rot_sixd[:,0], device=self.device)
+        self.blue_rb_root_vel = motion_res["body_vel"][:,0]
+        self.blue_rb_root_ang_vel = motion_res["body_ang_vel"][:,0]
+        self.blue_joint_angles = torch.tensor(rb_rot_sixd.reshape(self.num_envs * num_agents, -1), device=self.device)
+        self.blue_joint_ang_vel = motion_res["body_ang_vel"].reshape(self.num_envs * num_agents, -1)
+
+
+        # current_blue_root_xyz = self.blue_rb_xyz[self.steps_elapsed]
+        # current_blue_root_sixd = self.blue_rb_rot_sixd[self.steps_elapsed]
+        # current_blue_root_vel = self.blue_rb_vel[self.steps_elapsed]
+        # current_blue_root_ang = self.blue_rb_ang[self.steps_elapsed]
+        # current_blue_joint_angles = self.blue_joint_angles[self.steps_elapsed]
+        # current_blue_joint_velocities = self.blue_joint_angles[self.steps_elapsed]
+
+        # current_red_root_xyz = self.red_rb_xyz[self.steps_elapsed]
+        # current_red_root_sixd = self.red_rb_rot_sixd[self.steps_elapsed]
+        # current_red_root_vel = self.red_rb_vel[self.steps_elapsed]
+        # current_red_root_ang = self.red_rb_ang[self.steps_elapsed]
+        # current_red_joint_angles = self.red_joint_angles[self.steps_elapsed]
+        # current_red_joint_velocities = self.red_joint_angles[self.steps_elapsed]
+
         _, decoded, mu, log_var = self.ae.forward(
                 xs,
                 encoder_ys,
@@ -1936,10 +1997,14 @@ class HumanoidAeMcpPnn6(VecTask):
 
         cvae_decoded = self.ae.decode(z, decoder_ys)
         cvae_decoded = cvae_decoded.reshape((cvae_decoded.shape[0], 23, -1))
+        rb_ang_velocity_recon =  cvae_decoded[:, :, 6:].reshape(-1, 69)
+        recon_rb_ang_velocity_reshaped = torch.zeros_like(self.blue_joint_ang_vel).reshape(-1,24,3)
+        recon_rb_ang_velocity_reshaped[:,0] = intermediate_ys[:,10:]
+        recon_rb_ang_velocity_reshaped[:,1:] = rb_ang_velocity_recon.reshape(-1,23,3)
         rb_rot_sixd_recon = cvae_decoded[:, :, :6].reshape(-1, 138)
         rb_rot_sixd_recon = rb_rot_sixd_recon.cpu().detach().numpy()
 
-        rb_pos_reshaped = motion_res["rg_pos"].reshape(-1,24, 3)
+        
 
 
         #TODO: How should I do this?
@@ -1982,6 +2047,7 @@ class HumanoidAeMcpPnn6(VecTask):
         # recon_rot_quat[:,11,:] = quat_mul(q, recon_rot_quat[:,11,:])
 
         #TODO Should i remove the 0.0323 from the root?
+        rb_pos_reshaped = motion_res["rg_pos"].reshape(-1,24, 3)
         mutated_trans = rb_pos_reshaped[:,0,...] * 1
         #TODO addition or setting?
         mutated_trans[...,:2] += input_lats_importance * self.input_lats[:,13:15]
@@ -2008,6 +2074,13 @@ class HumanoidAeMcpPnn6(VecTask):
             #Override to ensure the second character stays in the T-pose.
             self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs,num_agents, -1, 3)
             self.ref_body_pos[:,1,...] = self.ref_rb_pos.reshape(self.num_envs,num_agents, -1, 3)[:,1,...].clone()
+
+        self.red_rb_root_xyz = mutated_trans
+        self.red_rb_root_rot_sixd = torch.tensor(recon_rot_sixd_reshaped[:,0].reshape(-1,6), device=self.device)
+        self.red_rb_root_vel = intermediate_ys[:,7:10] #motion_res["body_vel"][:,0] * 0 #TODO find the linear velocity!
+        self.red_rb_root_ang_vel = intermediate_ys[:,10:]
+        self.red_joint_angles = torch.tensor(recon_rot_sixd_reshaped.reshape(self.num_envs * num_agents, -1), device=self.device)
+        self.red_joint_ang_vel = recon_rb_ang_velocity_reshaped.reshape(self.num_envs * num_agents, -1)
 
 
 
@@ -2523,9 +2596,10 @@ def compute_humanoid_observations_max(body_pos, body_rot, body_vel, body_ang_vel
 
 
 #@torch.jit.script
-def compute_humanoid_reward( ref_body_vel, ref_body_pos, ref_rb_pos, initial_humanoid_root_pos):
-    # type: ( Tensor, Tensor, Tensor, Tensor) -> Tensor
+def compute_humanoid_reward( ref_body_vel, ref_body_pos, ref_rb_pos, initial_humanoid_root_pos, blue_obs, red_obs):
+    # type: ( Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tensor
 
+    '''
     local_ref_body_pos = ref_body_pos - ref_body_pos[...,[0],:]
     local_ref_rb_pos= ref_rb_pos - ref_rb_pos[...,[0],:]
     mse_loss = torch.nn.functional.mse_loss(local_ref_body_pos.reshape(local_ref_body_pos.shape[0],-1), local_ref_rb_pos.reshape(local_ref_rb_pos.shape[0],-1), reduction='none')
@@ -2552,9 +2626,9 @@ def compute_humanoid_reward( ref_body_vel, ref_body_pos, ref_rb_pos, initial_hum
     distance_to_init_pos_reward = torch.exp(-1 * distance_to_init_pos_loss_result)
     #print(distance_to_init_pos_reward)
     #alive_reward = progress_buf / (max_episode_length - 1)
+    '''
     reward = (
-        1e0 * velocity_reward +
-        1e0 * imitation_reward
+        torch.exp(-torch.mean((blue_obs - red_obs) ** 2, axis=-1))
     )
     return reward
 
