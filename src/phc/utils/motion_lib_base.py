@@ -244,35 +244,35 @@ class MotionLibBase():
 
         #print(num_jobs)
         res_acc = {}  # using dictionary ensures order of the results.
-        jobs = motion_data_list
-        chunk = np.ceil(len(jobs) / num_jobs).astype(int)
-        ids = np.arange(len(jobs))
-        print('here')
-        jobs = [(ids[i:i + chunk], jobs[i:i + chunk], skeleton_trees[i:i + chunk], gender_betas[i:i + chunk], self.fix_height, self.mesh_parsers, self._masterfoot_conifg, max_len) for i in range(0, len(jobs), chunk)]
-        job_args = [jobs[i] for i in range(len(jobs))]
-        print('here3')
-        for i in range(1, len(jobs)):
-            print('here2')
-            worker_args = (*job_args[i], queue, i)
-            worker = mp.Process(target=self.load_motion_with_skeleton, args=worker_args)
-            print('-test')
-            worker.start()
+        # jobs = motion_data_list
+        # chunk = np.ceil(len(jobs) / num_jobs).astype(int)
+        # ids = np.arange(len(jobs))
+        # print('here')
+        # jobs = [(ids[i:i + chunk], jobs[i:i + chunk], skeleton_trees[i:i + chunk], gender_betas[i:i + chunk], self.fix_height, self.mesh_parsers, self._masterfoot_conifg, max_len) for i in range(0, len(jobs), chunk)]
+        # job_args = [jobs[i] for i in range(len(jobs))]
+        # print('here3')
+        # for i in range(1, len(jobs)):
+        #     print('here2')
+        #     worker_args = (*job_args[i], queue, i)
+        #     worker = mp.Process(target=self.load_motion_with_skeleton, args=worker_args)
+        #     print('-test')
+        #     worker.start()
         print(num_motion_to_load)
         
         
-        if(num_motion_to_load < 10):
-            res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
-            #res_acc = torch.load('test_anim_short.pkl')
-        else:
-           res_acc = torch.load('test_anim_short.pkl')
-           first = res_acc[0]
-           res_acc = {i: first for i in range(num_motion_to_load)}
+        print('start dup')
+        res_acc.update(self.load_motion_with_skeleton([0],motion_data_list[[0]],
+                                                [skeleton_trees[0]],gender_betas[[0]],self.fix_height, self.mesh_parsers,
+                                                self._masterfoot_conifg, max_len , None, 0))
+        first = res_acc[0]
+        res_acc = {i: first for i in range(num_motion_to_load)}
+        print('end dup')
         #res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
         #torch.save(res_acc, "test_anim.pkl")
         #print('saved')
-        for i in tqdm(range(len(jobs) - 1)):
-            res = queue.get()
-            res_acc.update(res)
+        # for i in tqdm(range(len(jobs) - 1)):
+        #     res = queue.get()
+        #     res_acc.update(res)
         
         for f in tqdm(range(len(res_acc))):
             motion_file_data, curr_motion = res_acc[f]

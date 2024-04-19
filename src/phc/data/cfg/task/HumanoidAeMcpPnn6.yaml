@@ -8,7 +8,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: 1536
   envSpacing: 3
-  episodeLength: 1800
+  episodeLength: 100
   isFlagrun: False
   enableDebugVis: False
 

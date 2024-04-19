@@ -898,7 +898,7 @@ class HumanoidAeMcpPnn6(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert (False)
 
-        self._num_self_obs = 231 + 231 #red + blue guy observation
+        self._num_self_obs = 153 + 153 #red + blue guy observation
         # Account for all agents
         self._num_self_obs *= num_agents
 
@@ -1439,14 +1439,17 @@ class HumanoidAeMcpPnn6(VecTask):
         #print(self.step_count)
 
         #NOTE: the compute reward is called after calculate observation, so the self.blue_obs and self.red_obs are valid
-        self.rew_buf[:]= compute_humanoid_reward(
 
-            self._rigid_body_vel,
-            self._rigid_body_pos, #TODO: this should be self._rigid_body_pos.reshape(self.num_envs,num_agents,24,3)
-            self.modified_rb_body_pos,
-            self._corrected_initial_humanoid_root_pos,
+        self.rew_buf[:]= compute_humanoid_reward(
             self.blue_obs,
-            self.red_obs
+            self.red_obs,
+            self.blue_rb_root_xyz.reshape(self.num_envs, -1),
+            self.red_rb_root_xyz.reshape(self.num_envs, -1),
+            self.blue_joint_angles.reshape(self.num_envs, -1),
+            self.red_joint_angles.reshape(self.num_envs, -1),
+            self.blue_rb_xyz.reshape(self.num_envs,-1),
+            self.red_rb_xyz.reshape(self.num_envs,-1)
+
         )
         return
 
@@ -1477,38 +1480,40 @@ class HumanoidAeMcpPnn6(VecTask):
     def _compute_observations(self,r_body_pos, r_body_rot, r_body_vel, r_body_ang_vel, env_ids=None):
 
         #TODO: fix the function to use env_ids
-        obs = self._compute_humanoid_obs(
-            r_body_pos,
-            r_body_rot,
-            r_body_vel,
-            r_body_ang_vel,
-            env_ids)
+        # obs = self._compute_humanoid_obs(
+        #     r_body_pos,
+        #     r_body_rot,
+        #     r_body_vel,
+        #     r_body_ang_vel,
+        #     env_ids)
 
         #TODO: NOTE: For now i'm having issue with concating multi character obs with box, so i'm just ignoring box observation
 
         # Concatenate box state
         # obs = torch.cat([obs, self._box_states[env_ids]], dim=-1)
 
-        self.blue_obs =  torch.cat([self.blue_rb_root_xyz, self.blue_rb_root_rot_sixd, self.blue_rb_root_vel
-                ,self.blue_rb_root_ang_vel, self.blue_joint_angles, self.blue_joint_ang_vel], dim=-1)
-        self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
-                                self.red_rb_root_ang_vel, self.red_joint_angles, self.red_joint_ang_vel], dim=-1)
+        # self.blue_obs =  torch.cat([self.blue_rb_root_xyz, self.blue_rb_root_rot_sixd, self.blue_rb_root_vel
+        #         ,self.blue_rb_root_ang_vel, self.blue_joint_angles, self.blue_joint_ang_vel], dim=-1)
+        # self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
+        #                         self.red_rb_root_ang_vel, self.red_joint_angles, self.red_joint_ang_vel], dim=-1)
+        self.blue_obs =  torch.cat([self.blue_rb_root_xyz, self.blue_rb_root_rot_sixd, self.blue_joint_angles], dim=-1)
+        self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_joint_angles], dim=-1)
         
         if env_ids is None:
 
-            new_obs = obs.clone().reshape(self.num_envs, -1)
+            #new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[:] = torch.cat([new_obs[...,358:]], dim=-1)
 
 
-        
             self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs ], dim=-1).reshape(self.obs_buf.shape[0],-1)
             # self.obs_buf = self.obs_buf
         else:
-            new_obs = obs.clone().reshape(self.num_envs, -1)
+            #new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[env_ids] = torch.cat([new_obs[...,358:]], dim=-1)
             self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs ], dim=-1).reshape(self.obs_buf.shape[0],-1)
         #print(self.obs_buf)
-        return obs
+        #NOTE this should be obs if we use it with phc
+        return  self.obs_buf
 
 #TODO: fix the function to use env_ids
     def _compute_humanoid_obs(self,r_body_pos, r_body_rot, r_body_vel, r_body_ang_vel, env_ids=None):
@@ -1807,9 +1812,9 @@ class HumanoidAeMcpPnn6(VecTask):
             self.pre_physics_step_ae(input_lats_importance=0,input_my_lats_importance=1e0,force_t_pose=False)
         elif self.ae_type == "vae":
             self.my_lats = self.ae.encoder.forward(self.ae.rms.normalize(self.ref_rb_pos.reshape(self.ref_rb_pos.shape[0], -1)))
-            self.pre_physics_step_vae(input_lats_importance=1e0,input_my_lats_importance=1e0,force_t_pose=False)
+            self.pre_physics_step_vae(input_lats_importance=0,input_my_lats_importance=1e0,force_t_pose=False)
         elif self.ae_type == "cvae":
-            self.pre_physics_step_cvae(motion_res, input_lats_importance=0,input_my_lats_importance=1e0,force_t_pose=False)
+            self.pre_physics_step_cvae(motion_res, input_lats_importance=1e0,input_my_lats_importance=1e0,force_t_pose=False)
         else:
             self.pre_physics_step_none()
 
@@ -2058,14 +2063,7 @@ class HumanoidAeMcpPnn6(VecTask):
             torch.as_tensor(mutated_trans, dtype=torch.float, device = self.device),
             is_local=False,
         )
-
-        recon_global_translation = (
-            recon_sk_state.global_translation.detach().cpu().numpy()
-        )
-        recon_global_rotation = (
-            recon_sk_state.global_rotation.detach().cpu().numpy()
-        )
-
+        self.blue_rb_xyz = motion_res["rg_pos"]
         motion_res["rg_pos"] = motion_res["rg_pos"]-torch.tensor((0,0,0.0323),device=self.device)
         self.ref_body_pos = recon_sk_state.global_translation.detach().to(self.device)
 
@@ -2083,9 +2081,9 @@ class HumanoidAeMcpPnn6(VecTask):
         self.red_joint_ang_vel = recon_rb_ang_velocity_reshaped.reshape(self.num_envs * num_agents, -1)
 
 
-
+        self.red_rb_xyz = self.ref_body_pos
         self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
-
+        
         self.modified_ref_body_pos = self.ref_body_pos.clone()
 
         # testing out-of-distribution tracking
@@ -2178,96 +2176,96 @@ class HumanoidAeMcpPnn6(VecTask):
                 self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
                 self._rigid_body_ang_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_ang_vel.shape[-1])
             )
-            '''
-            obs_slices = [self._compute_observations(
-                self._rigid_body_pos[:,agent,...],
-                self._rigid_body_rot[:,agent,...],
-                self._rigid_body_vel[:,agent,...],
-                self._rigid_body_ang_vel[:,agent,...],
-                agent
-            ) for agent in range(num_agents)]
-            # NOTE: current implemanetation doesn't account for multi agents, so, for multiple agents, i will calcualte this  using for loop
-            # TODO: fix it?
-            obs = torch.stack(obs_slices, dim=1)
-            '''
-            #obs = obs.view(self.num_envs * num_agents, -1)
+            # '''
+            # obs_slices = [self._compute_observations(
+            #     self._rigid_body_pos[:,agent,...],
+            #     self._rigid_body_rot[:,agent,...],
+            #     self._rigid_body_vel[:,agent,...],
+            #     self._rigid_body_ang_vel[:,agent,...],
+            #     agent
+            # ) for agent in range(num_agents)]
+            # # NOTE: current implemanetation doesn't account for multi agents, so, for multiple agents, i will calcualte this  using for loop
+            # # TODO: fix it?
+            # obs = torch.stack(obs_slices, dim=1)
+            # '''
+            # #obs = obs.view(self.num_envs * num_agents, -1)
 
-            g = compute_imitation_observations_v7(
-               self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., :3],
-                self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., 3:7],
-                self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
-                self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
-                self.modified_ref_body_pos, # TODO: this should be changed to use agent
-                self.ref_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,3),
-                1,
-                True
-            )
-            '''
-            g_slices = [compute_imitation_observations_v7(
-                self._humanoid_root_states[:,agent , :3],
-                self._humanoid_root_states[:,agent, 3:7],
-                self._rigid_body_pos[:,agent,...],
-                self._rigid_body_vel[:,agent,...],
-                self.modified_ref_body_pos.view(self.num_envs, num_agents,-1,3)[:,agent,...], # TODO: this should be changed to use agent
-                self.ref_body_vel[:,agent,...],
-                1,
-                True
-            ) for agent in range(num_agents)]
+            # g = compute_imitation_observations_v7(
+            #    self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., :3],
+            #     self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., 3:7],
+            #     self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+            #     self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+            #     self.modified_ref_body_pos, # TODO: this should be changed to use agent
+            #     self.ref_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,3),
+            #     1,
+            #     True
+            # )
+            # '''
+            # g_slices = [compute_imitation_observations_v7(
+            #     self._humanoid_root_states[:,agent , :3],
+            #     self._humanoid_root_states[:,agent, 3:7],
+            #     self._rigid_body_pos[:,agent,...],
+            #     self._rigid_body_vel[:,agent,...],
+            #     self.modified_ref_body_pos.view(self.num_envs, num_agents,-1,3)[:,agent,...], # TODO: this should be changed to use agent
+            #     self.ref_body_vel[:,agent,...],
+            #     1,
+            #     True
+            # ) for agent in range(num_agents)]
 
-            # Combine the slices into a single tensor
-            g = torch.stack(g_slices, dim=1)
-            g = g.view(self.num_envs * num_agents, -1)
-            '''
-            #
-            obs = obs[..., :358]
-            # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
-            # Also, the self.running_mean has to be repeated. we can do this, where it is assigned for the first time (after it is being read from pnn)
+            # # Combine the slices into a single tensor
+            # g = torch.stack(g_slices, dim=1)
+            # g = g.view(self.num_envs * num_agents, -1)
+            # '''
+            # #
+            # obs = obs[..., :358]
+            # # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
+            # # Also, the self.running_mean has to be repeated. we can do this, where it is assigned for the first time (after it is being read from pnn)
 
-            #obs = obs.repeat(2,1)
-            #g = g.repeat(2,1)
-            nail = torch.cat([obs, g], dim=-1)
-            nail = ((nail - self.running_mean[None].float()) / torch.sqrt(self.running_var[None].float() + 1e-05))
-            nail = torch.clamp(nail, min=-5.0, max=5.0)
-            _, x_all = self.pnn(nail)
-            x_all = torch.stack(x_all, dim=1)
-            #x_all = x_all.view(-1,x_all.shape[-2],x_all.shape[-1])
-            # Compute the MCP policy's actions
-            input_dict = {
-                "is_train": False,
-                "prev_actions": None,
-                "obs": nail,#.view(-1,nail.shape[-1]),
-                "rnn_states": None,
-            }
-            with torch.no_grad():
-                weights, _, _, _ = self.mcp(input_dict)
-            rescaled_weights = rescale_actions(-1., 1., torch.clamp(weights, -1.0, 1.0))
-            #rescaled_weights = rescaled_weights.view(self.num_envs, num_agents, -1)
-            self.actions = torch.sum(rescaled_weights[:, :, None] * x_all, dim=1)
-            self.actions = self.actions.view(self.num_envs, -1)
+            # #obs = obs.repeat(2,1)
+            # #g = g.repeat(2,1)
+            # nail = torch.cat([obs, g], dim=-1)
+            # nail = ((nail - self.running_mean[None].float()) / torch.sqrt(self.running_var[None].float() + 1e-05))
+            # nail = torch.clamp(nail, min=-5.0, max=5.0)
+            # _, x_all = self.pnn(nail)
+            # x_all = torch.stack(x_all, dim=1)
+            # #x_all = x_all.view(-1,x_all.shape[-2],x_all.shape[-1])
+            # # Compute the MCP policy's actions
+            # input_dict = {
+            #     "is_train": False,
+            #     "prev_actions": None,
+            #     "obs": nail,#.view(-1,nail.shape[-1]),
+            #     "rnn_states": None,
+            # }
+            # with torch.no_grad():
+            #     weights, _, _, _ = self.mcp(input_dict)
+            # rescaled_weights = rescale_actions(-1., 1., torch.clamp(weights, -1.0, 1.0))
+            # #rescaled_weights = rescaled_weights.view(self.num_envs, num_agents, -1)
+            # self.actions = torch.sum(rescaled_weights[:, :, None] * x_all, dim=1)
+            # self.actions = self.actions.view(self.num_envs, -1)
 
-            if self.smpl_humanoid:
-                if self.reduce_action:
-                    actions_full = torch.zeros([self.actions.shape[0], self._dof_size]).to(self.device)
-                    actions_full[:, self.action_idx] = self.actions
-                    pd_tar = self._action_to_pd_targets(actions_full)
+            # if self.smpl_humanoid:
+            #     if self.reduce_action:
+            #         actions_full = torch.zeros([self.actions.shape[0], self._dof_size]).to(self.device)
+            #         actions_full[:, self.action_idx] = self.actions
+            #         pd_tar = self._action_to_pd_targets(actions_full)
 
-                else:
-                    pd_tar = self._action_to_pd_targets(self.actions)
-                    #TODO, do this for both agents
-                    #if self._freeze_hand:
-                    #    pd_tar[:, self._dof_names.index("L_Hand") * 3:(self._dof_names.index("L_Hand") * 3 + 3)] = 0
-                    #    pd_tar[:, self._dof_names.index("R_Hand") * 3:(self._dof_names.index("R_Hand") * 3 + 3)] = 0
-                    #if self._freeze_toe:
-                    #    pd_tar[:, self._dof_names.index("L_Toe") * 3:(self._dof_names.index("L_Toe") * 3 + 3)] = 0
-                    #    pd_tar[:, self._dof_names.index("R_Toe") * 3:(self._dof_names.index("R_Toe") * 3 + 3)] = 0
-                    #if self._remove_neck:
-                    #    pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
-                     #   pd_tar[:, self._dof_names.index("Head") * 3:(self._dof_names.index("Head") * 3 + 3)] = 0
+            #     else:
+            #         pd_tar = self._action_to_pd_targets(self.actions)
+            #         #TODO, do this for both agents
+            #         #if self._freeze_hand:
+            #         #    pd_tar[:, self._dof_names.index("L_Hand") * 3:(self._dof_names.index("L_Hand") * 3 + 3)] = 0
+            #         #    pd_tar[:, self._dof_names.index("R_Hand") * 3:(self._dof_names.index("R_Hand") * 3 + 3)] = 0
+            #         #if self._freeze_toe:
+            #         #    pd_tar[:, self._dof_names.index("L_Toe") * 3:(self._dof_names.index("L_Toe") * 3 + 3)] = 0
+            #         #    pd_tar[:, self._dof_names.index("R_Toe") * 3:(self._dof_names.index("R_Toe") * 3 + 3)] = 0
+            #         #if self._remove_neck:
+            #         #    pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
+            #          #   pd_tar[:, self._dof_names.index("Head") * 3:(self._dof_names.index("Head") * 3 + 3)] = 0
 
 
 
-            pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
-            self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
+            # pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
+            # self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
             self.render()
             #super().physics_step()
             self._refresh_sim_tensors()
@@ -2595,9 +2593,9 @@ def compute_humanoid_observations_max(body_pos, body_rot, body_vel, body_ang_vel
     return obs
 
 
-#@torch.jit.script
-def compute_humanoid_reward( ref_body_vel, ref_body_pos, ref_rb_pos, initial_humanoid_root_pos, blue_obs, red_obs):
-    # type: ( Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tensor
+@torch.jit.script
+def compute_humanoid_reward( blue_obs, red_obs,blue_rb_root_xyz,red_rb_root_xyz,blue_joint_angles,red_joint_angles, blue_rb_xyz, red_rb_xyz):
+    # type: (  Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tensor
 
     '''
     local_ref_body_pos = ref_body_pos - ref_body_pos[...,[0],:]
@@ -2627,8 +2625,13 @@ def compute_humanoid_reward( ref_body_vel, ref_body_pos, ref_rb_pos, initial_hum
     #print(distance_to_init_pos_reward)
     #alive_reward = progress_buf / (max_episode_length - 1)
     '''
+
     reward = (
-        torch.exp(-torch.mean((blue_obs - red_obs) ** 2, axis=-1))
+        torch.exp(-torch.mean((blue_rb_xyz - red_rb_xyz) ** 2, dim=-1))
+        #torch.exp(-torch.mean((blue_obs - red_obs) ** 2, dim=-1))
+        #torch.exp(-torch.mean((blue_rb_root_xyz - red_rb_root_xyz) ** 2, dim=-1))
+        #torch.exp(-torch.mean((blue_joint_angles - red_joint_angles) ** 2, dim=-1))
+
     )
     return reward
 
