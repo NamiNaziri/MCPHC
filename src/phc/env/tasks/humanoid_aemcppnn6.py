@@ -1458,8 +1458,8 @@ class HumanoidAeMcpPnn6(VecTask):
         self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
         self.reset_buf,
         self.progress_buf,
-        self._contact_forces,
-        self._contact_body_ids,
+        self.blue_rb_xyz,
+        self.red_rb_xyz,
         self._rigid_body_pos.reshape(self.num_envs, num_agents * self.num_bodies,3),
         self.max_episode_length,
         self._enable_early_termination,
@@ -1653,7 +1653,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self._motion_start_times_offset[env_ids] *= 0  # Reset the motion time offsets
         self._global_offset[env_ids] *= 0  # Reset the global offset when resampling.
         #self._cycle_counter[env_ids] = 0
-
+        #print(len(env_ids))
 
         num_envs = env_ids.shape[0]
         motion_ids, motion_times, root_pos, root_rot, dof_pos, root_vel, root_ang_vel, dof_vel, rb_pos, rb_rot, body_vel, body_ang_vel = self._sample_ref_state(env_ids)
@@ -1668,21 +1668,39 @@ class HumanoidAeMcpPnn6(VecTask):
         )
 
         #TODO: is this correct? setting both observation as the ref anim?
-        self.blue_rb_xyz = rb_pos.reshape(self.num_envs * num_agents, -1)
-        self.blue_rb_root_xyz = rb_pos[:,0]
-        self.blue_rb_root_rot_sixd = rb_rot_sixd[:,0]
-        self.blue_rb_root_vel = body_vel[:,0]
-        self.blue_rb_root_ang_vel = body_ang_vel[:,0]
-        self.blue_joint_angles = rb_rot_sixd.reshape(self.num_envs * num_agents, -1)
-        self.blue_joint_ang_vel = body_ang_vel.reshape(self.num_envs * num_agents, -1)
 
-        self.red_rb_xyz = self.blue_rb_xyz
-        self.red_rb_root_xyz=self.blue_rb_root_xyz
-        self.red_rb_root_rot_sixd =self.blue_rb_root_rot_sixd 
-        self.red_rb_root_vel =self.blue_rb_root_vel 
-        self.red_rb_root_ang_vel =self.blue_rb_root_ang_vel 
-        self.red_joint_angles =self.blue_joint_angles 
-        self.red_joint_ang_vel =self.blue_joint_ang_vel 
+        if(len(env_ids) == self.num_envs):
+            self.blue_rb_xyz = rb_pos.reshape(self.num_envs * num_agents, -1).clone()
+            self.blue_rb_root_xyz = rb_pos[:,0].clone()
+            self.blue_rb_root_rot_sixd = rb_rot_sixd[:,0].clone()
+            self.blue_rb_root_vel = body_vel[:,0].clone()
+            self.blue_rb_root_ang_vel = body_ang_vel[:,0].clone()
+            self.blue_joint_angles = rb_rot_sixd.reshape(self.num_envs * num_agents, -1).clone()
+            self.blue_joint_ang_vel = body_ang_vel.reshape(self.num_envs * num_agents, -1).clone()
+
+            self.red_rb_xyz = self.blue_rb_xyz.clone()
+            self.red_rb_root_xyz=self.blue_rb_root_xyz.clone()
+            self.red_rb_root_rot_sixd =self.blue_rb_root_rot_sixd.clone()
+            self.red_rb_root_vel =self.blue_rb_root_vel.clone()
+            self.red_rb_root_ang_vel =self.blue_rb_root_ang_vel.clone()
+            self.red_joint_angles =self.blue_joint_angles.clone()
+            self.red_joint_ang_vel =self.blue_joint_ang_vel.clone()
+        else:
+            self.blue_rb_xyz[env_ids] = rb_pos.reshape(len(env_ids) * num_agents, -1).clone()
+            self.blue_rb_root_xyz[env_ids] = rb_pos[:,0].clone()
+            self.blue_rb_root_rot_sixd[env_ids] = rb_rot_sixd[:,0].clone()
+            self.blue_rb_root_vel[env_ids] = body_vel[:,0].clone()
+            self.blue_rb_root_ang_vel[env_ids] = body_ang_vel[:,0].clone()
+            self.blue_joint_angles[env_ids] = rb_rot_sixd.reshape(len(env_ids) * num_agents, -1).clone()
+            self.blue_joint_ang_vel[env_ids] = body_ang_vel.reshape(len(env_ids) * num_agents, -1).clone()
+
+            self.red_rb_xyz[env_ids] = self.blue_rb_xyz[env_ids].clone()
+            self.red_rb_root_xyz[env_ids] =self.blue_rb_root_xyz[env_ids].clone()
+            self.red_rb_root_rot_sixd[env_ids] =self.blue_rb_root_rot_sixd [env_ids].clone()
+            self.red_rb_root_vel[env_ids] =self.blue_rb_root_vel [env_ids].clone()
+            self.red_rb_root_ang_vel[env_ids] =self.blue_rb_root_ang_vel [env_ids].clone()
+            self.red_joint_angles[env_ids] =self.blue_joint_angles [env_ids].clone()
+            self.red_joint_ang_vel[env_ids] =self.blue_joint_ang_vel [env_ids].clone()
 
 
         # if flags.debug:
@@ -2096,7 +2114,7 @@ class HumanoidAeMcpPnn6(VecTask):
         #     torch.as_tensor(mutated_trans, dtype=torch.float, device = self.device),
         #     is_local=False,
         # )
-        self.blue_rb_xyz = motion_res["rg_pos"].reshape(self.num_envs * num_agents, -1)
+        self.blue_rb_xyz = motion_res["rg_pos"].reshape(self.num_envs * num_agents, -1).clone()
         motion_res["rg_pos"] = motion_res["rg_pos"]-torch.tensor((0,0,0.0323),device=self.device)
         # self.ref_body_pos = recon_sk_state.global_translation.detach().to(self.device)
         self.ref_body_pos = cvae_decoded_with_yaw -torch.tensor((0,0,0.0323),device=self.device)
@@ -2108,13 +2126,13 @@ class HumanoidAeMcpPnn6(VecTask):
 
         self.red_rb_root_xyz = mutated_trans
         #self.red_rb_root_rot_sixd = torch.tensor(recon_rot_sixd_reshaped[:,0].reshape(-1,6), device=self.device)
-        self.red_rb_root_vel = intermediate_ys[:,7:10] #motion_res["body_vel"][:,0] * 0 #TODO find the linear velocity!
-        self.red_rb_root_ang_vel = intermediate_ys[:,10:]
+        #self.red_rb_root_vel = intermediate_ys[:,7:10] #motion_res["body_vel"][:,0] * 0 #TODO find the linear velocity!
+        #self.red_rb_root_ang_vel = intermediate_ys[:,10:]
         #self.red_joint_angles = torch.tensor(recon_rot_sixd_reshaped.reshape(self.num_envs * num_agents, -1), device=self.device)
         # self.red_joint_ang_vel = recon_rb_ang_velocity_reshaped.reshape(self.num_envs * num_agents, -1)
 
 
-        self.red_rb_xyz = self.ref_body_pos.reshape(self.num_envs * num_agents, -1)
+        self.red_rb_xyz = self.ref_body_pos.reshape(self.num_envs * num_agents, -1).clone().float()
         self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
         
         self.modified_ref_body_pos = self.ref_body_pos.clone()
@@ -2669,43 +2687,23 @@ def compute_humanoid_reward( blue_obs, red_obs,blue_rb_root_xyz,red_rb_root_xyz,
     return reward
 
 
-@torch.jit.script
-def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, max_episode_length, enable_early_termination, termination_heights):
+#@torch.jit.script
+def compute_humanoid_reset(reset_buf, progress_buf, blue_rb_xyz, red_rb_xyz, rigid_body_pos, max_episode_length, enable_early_termination, termination_heights):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]
     #['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+    # type: (Tensor, Tensor, Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)
-    #enable_early_termination
-    if (enable_early_termination):
-
-        masked_contact_buf = contact_buf.clone()
-        masked_contact_buf[:, contact_body_ids, :] = 0
-        fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
-        #print(torch.any(torch.abs(masked_contact_buf) > 500, dim=-1))
-        fall_contact = torch.any(fall_contact, dim=-1)
-        # if fall_contact.any():
-        # print(masked_contact_buf[0, :, 0].nonzero())
-        #     import ipdb
-        #     ipdb.set_trace()
-
-        body_height = rigid_body_pos[..., 2]
-        fall_height = body_height < termination_heights
-        fall_height[:, contact_body_ids] = False
-        fall_height = torch.any(fall_height, dim=-1)
-
-        ############################## Debug ##############################
-        # mujoco_joint_names = np.array(['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']);  print( mujoco_joint_names[masked_contact_buf[0, :, 0].nonzero().cpu().numpy()])
-        ############################## Debug ##############################
-
-        has_fallen = torch.logical_and(fall_contact, fall_height)
-
-        #terminate when contact happens
-        #has_fallen = torch.logical_or(fall_contact, fall_height)
-
-
-        # first timestep can sometimes still have nonzero contact forces
-        # so only check after first couple of steps
-        has_fallen *= (progress_buf > 1)
-        terminated = torch.where(has_fallen, torch.ones_like(reset_buf), terminated)
+    # enable_early_termination
+    if enable_early_termination:
+        delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
+        delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
+        terminated = delta_mean_norm > 1e-1
+        terminated *= progress_buf > 1
+ 
+    reset = torch.where(
+        progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
+    )
+    return reset, terminated
 
     reset = torch.where(progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated)
     # import ipdb
