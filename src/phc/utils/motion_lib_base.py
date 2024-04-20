@@ -261,6 +261,7 @@ class MotionLibBase():
         
         
         print('start dup')
+        #res_acc = torch.load('new_short_anim.pkl')
         res_acc.update(self.load_motion_with_skeleton([0],motion_data_list[[0]],
                                                 [skeleton_trees[0]],gender_betas[[0]],self.fix_height, self.mesh_parsers,
                                                 self._masterfoot_conifg, max_len , None, 0))

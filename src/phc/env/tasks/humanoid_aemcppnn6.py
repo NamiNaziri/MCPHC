@@ -214,7 +214,7 @@ class HumanoidAeMcpPnn6(VecTask):
             ae_dict = torch.load(f"{proj_dir}/good/vae11.0.pkl")
         elif self.ae_type =="cvae":
             self.sk_tree = SkeletonTree.from_mjcf(f"{proj_dir}/data/mjcf/smpl_humanoid_1.xml")
-            ae_dict = torch.load(f"{proj_dir}/good/vae_005000.pkl")
+            ae_dict = torch.load(f"{proj_dir}/good/vae_001400.pkl")
 
         else:
             ae_dict = torch.load(f"{proj_dir}/good/ae2.pkl")
@@ -700,7 +700,7 @@ class HumanoidAeMcpPnn6(VecTask):
     def get_action_size(self):
         if(self.ae_type == 'cvae'):
 
-            return (13 + 2 + 16) * num_agents #for ys + latent space dim + root xy
+            return (7 + 2 + 16) * num_agents #for ys + latent space dim + root xy
         else:
             return 10 * num_agents
         # return self._num_actions
@@ -898,7 +898,7 @@ class HumanoidAeMcpPnn6(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert (False)
 
-        self._num_self_obs = 153 + 153 #red + blue guy observation
+        self._num_self_obs = 75 + 75 #red + blue guy observation
         # Account for all agents
         self._num_self_obs *= num_agents
 
@@ -1496,8 +1496,8 @@ class HumanoidAeMcpPnn6(VecTask):
         #         ,self.blue_rb_root_ang_vel, self.blue_joint_angles, self.blue_joint_ang_vel], dim=-1)
         # self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
         #                         self.red_rb_root_ang_vel, self.red_joint_angles, self.red_joint_ang_vel], dim=-1)
-        self.blue_obs =  torch.cat([self.blue_rb_root_xyz, self.blue_rb_root_rot_sixd, self.blue_joint_angles], dim=-1)
-        self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_joint_angles], dim=-1)
+        self.blue_obs =  torch.cat([self.blue_rb_root_xyz, self.blue_rb_xyz], dim=-1)
+        self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_xyz], dim=-1)
         
         if env_ids is None:
 
@@ -1668,7 +1668,7 @@ class HumanoidAeMcpPnn6(VecTask):
         )
 
         #TODO: is this correct? setting both observation as the ref anim?
-
+        self.blue_rb_xyz = rb_pos.reshape(self.num_envs * num_agents, -1)
         self.blue_rb_root_xyz = rb_pos[:,0]
         self.blue_rb_root_rot_sixd = rb_rot_sixd[:,0]
         self.blue_rb_root_vel = body_vel[:,0]
@@ -1676,6 +1676,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.blue_joint_angles = rb_rot_sixd.reshape(self.num_envs * num_agents, -1)
         self.blue_joint_ang_vel = body_ang_vel.reshape(self.num_envs * num_agents, -1)
 
+        self.red_rb_xyz = self.blue_rb_xyz
         self.red_rb_root_xyz=self.blue_rb_root_xyz
         self.red_rb_root_rot_sixd =self.blue_rb_root_rot_sixd 
         self.red_rb_root_vel =self.blue_rb_root_vel 
@@ -1936,9 +1937,15 @@ class HumanoidAeMcpPnn6(VecTask):
         )
         rb_rot_euler = Rotation.from_matrix(rb_rot_rotmat.reshape(-1,3,3)).as_euler('zyx')
         cached_original_root_yaw = rb_rot_euler.reshape(*rb_rot_sixd_reshaped.shape[:-2], 3)[:,[0],0]
-        rb_rot_euler.reshape(*rb_rot_sixd_reshaped.shape[:-2], 3)[:,:,0] -= cached_original_root_yaw
+
+        rb_rot = Rotation.from_matrix(rb_rot_rotmat.reshape(-1,3,3))
+        correction = Rotation.from_euler("Z", -1 * cached_original_root_yaw.reshape(-1,1,1).repeat(24,axis=1).reshape(-1,1))
+        rb_rot = correction * rb_rot
+        rb_rot_quat = rb_rot.as_quat()
+
+
         rb_rot_sixd_inv = (
-            Rotation.from_euler('zyx', rb_rot_euler)
+            Rotation.from_quat(rb_rot_quat.reshape(-1,4))
             .as_matrix()
             .reshape((*rb_rot_sixd_reshaped.shape[:-2], 3, 3))[..., :2]
             .reshape((*rb_rot_sixd_reshaped.shape[:-2], 6))
@@ -1946,15 +1953,13 @@ class HumanoidAeMcpPnn6(VecTask):
         #used for sanity check
         # xs = torch.load('xs.pkl')
         # encoder_ys = torch.load('ys.pkl')
-        xs = np.concatenate([rb_rot_sixd_inv.reshape(-1, 24, 6)[:, 1:],motion_res["body_ang_vel"].reshape(-1, 24, 3)[:, 1:]],axis=-1)
+        xs = np.concatenate([rb_rot_sixd_inv.reshape(-1, 24, 6)[:, 1:]],axis=-1)
         xs = torch.tensor(xs, dtype=torch.float, device=self.device)
         xs = xs.reshape(xs.shape[0],-1)
         encoder_ys = np.concatenate(
             [
                 motion_res["rg_pos"].reshape(-1, 24, 3)[:, 0, -1, None],  # z position
                 rb_rot_sixd_inv.reshape(-1, 24, 6)[:, 0,:],
-                motion_res["body_vel"].reshape(-1, 24, 3)[:, 0,:],
-                motion_res["body_ang_vel"].reshape(-1, 24, 3)[:, 0,:],
             ],
             axis=-1,)
         encoder_ys = torch.tensor(encoder_ys, dtype=torch.float, device=self.device)
@@ -1988,57 +1993,84 @@ class HumanoidAeMcpPnn6(VecTask):
                 train_yes=False,
             )
 
-        intermediate_ys = encoder_ys + input_lats_importance * self.input_lats[:,:13]
+        intermediate_ys = encoder_ys.clone() + input_lats_importance * self.input_lats[:,:7]
         decoder_ys = intermediate_ys.clone()
 
         #sixd rotation is index [1:7]
-        cached_intermediate_orientation = self.sixd_to_euler(intermediate_ys[...,1:7])[...,0]
-        cached_intermediate_orientation_yaw_shaped = np.zeros((cached_intermediate_orientation.shape[0], 3))
-        cached_intermediate_orientation_yaw_shaped[:,0] = cached_intermediate_orientation
-        # setting the yaw to zero to use it in the decoder
-        decoder_ys[...,1:7] = torch.tensor(self.sixd_add_root(intermediate_ys[...,1:7], -1 * cached_intermediate_orientation_yaw_shaped), device=self.device).squeeze(1)
+        cached_intermediate_orientation = self.sixd_to_euler(intermediate_ys[...,1:7])[...,[0]]
+        #cached_intermediate_orientation_yaw_shaped = np.zeros((cached_intermediate_orientation.shape[0], 3))
+        #cached_intermediate_orientation_yaw_shaped[:,0] = cached_intermediate_orientation
 
-        z = input_lats_importance * self.input_lats[:,15:] +  input_my_lats_importance * mu
+        decoder_ys_sixd_reshape = decoder_ys[...,1:7].reshape(-1,3,2)
+        # setting the yaw to zero to use it in the decoder
+        third_column = np.cross(
+            decoder_ys_sixd_reshape[..., 0], decoder_ys_sixd_reshape[..., 1], axis=-1
+        )
+        rb_rot_rotmat = np.concatenate(
+            [decoder_ys_sixd_reshape, third_column[..., None]], axis=-1
+        )
+        rb_rot = Rotation.from_matrix(rb_rot_rotmat.reshape(-1,3,3))
+        correction = Rotation.from_euler("Z", -1 * cached_intermediate_orientation.reshape(-1,1))
+        rb_rot = correction * rb_rot
+        decoder_rb_rot_quat = rb_rot.as_quat()
+
+        decoder_sixd_inv = (
+            Rotation.from_quat(decoder_rb_rot_quat.reshape(-1,4))
+            .as_matrix()
+            .reshape((-1, 3, 3))[..., :2]
+            .reshape((-1, 6))
+        )
+
+        decoder_ys[...,1:7] = torch.tensor(decoder_sixd_inv, device=self.device)
+
+        z = input_lats_importance * self.input_lats[:,9:] +  input_my_lats_importance * mu
 
         cvae_decoded = self.ae.decode(z, decoder_ys)
-        cvae_decoded = cvae_decoded.reshape((cvae_decoded.shape[0], 23, -1))
-        rb_ang_velocity_recon =  cvae_decoded[:, :, 6:].reshape(-1, 69)
-        recon_rb_ang_velocity_reshaped = torch.zeros_like(self.blue_joint_ang_vel).reshape(-1,24,3)
-        recon_rb_ang_velocity_reshaped[:,0] = intermediate_ys[:,10:]
-        recon_rb_ang_velocity_reshaped[:,1:] = rb_ang_velocity_recon.reshape(-1,23,3)
-        rb_rot_sixd_recon = cvae_decoded[:, :, :6].reshape(-1, 138)
-        rb_rot_sixd_recon = rb_rot_sixd_recon.cpu().detach().numpy()
+        #cvae_decoded = cvae_decoded.reshape((cvae_decoded.shape[0], 23, -1))
+        #rb_ang_velocity_recon =  cvae_decoded[:, :, 6:].reshape(-1, 69)
+        # recon_rb_ang_velocity_reshaped = torch.zeros_like(self.blue_joint_ang_vel).reshape(-1,24,3)
+        # recon_rb_ang_velocity_reshaped[:,0] = intermediate_ys[:,10:]
+        # recon_rb_ang_velocity_reshaped[:,1:] = rb_ang_velocity_recon.reshape(-1,23,3)
+        cvae_decoded = cvae_decoded.reshape(self.num_envs * num_agents,24, -1)
 
+        cached_intermediate_orientation += cached_original_root_yaw
+        tmp = cvae_decoded[:, [0]] * 1
+        cvae_decoded -= tmp
+        yaw_rot = Rotation.from_euler("Z", cached_intermediate_orientation)
+        yaw_rotmat = yaw_rot.as_matrix()
+        cvae_decoded_with_yaw = np.einsum("nab, npb -> npa", yaw_rotmat, cvae_decoded)
+        cvae_decoded_with_yaw = torch.tensor(cvae_decoded_with_yaw, device=self.device)
+        cvae_decoded_with_yaw += tmp
         
 
 
         #TODO: How should I do this?
         #TODO: should i delete this?
-        rb_rot_sixd_reshaped = rb_rot_sixd_inv.reshape(-1,24, 3, 2) * 1
-        recon_rot_sixd_reshaped = rb_rot_sixd_reshaped * 1
-        recon_rot_sixd_reshaped[:,1:] = rb_rot_sixd_recon.reshape(-1,23, 3, 2)
+        # rb_rot_sixd_reshaped = rb_rot_sixd_inv.reshape(-1,24, 3, 2) * 1
+        # recon_rot_sixd_reshaped = rb_rot_sixd_reshaped * 1
+        # recon_rot_sixd_reshaped[:,1:] = rb_rot_sixd_recon.reshape(-1,23, 3, 2)
 
         #TODO: should I set the full orientation or only the yaw? ANSWER: ONLY YAW
 
         #setting full orientation
         #recon_rot_sixd_reshaped = torch.tensor(self.sixd_add_root(recon_rot_sixd_reshaped, cached_intermediate_orientation), device=self.device)
         #setting only yaw
-        cached_intermediate_orientation_yaw_shaped[...,0] += cached_original_root_yaw[...,0]
-        recon_rot_sixd_reshaped = torch.tensor(self.sixd_add_root(recon_rot_sixd_reshaped, cached_intermediate_orientation_yaw_shaped), device=self.device)
-        recon_rot_sixd_reshaped = recon_rot_sixd_reshaped.reshape(-1,24, 3, 2)
+        #cached_intermediate_orientation_yaw_shaped[...,0] += cached_original_root_yaw[...,0]
+        #recon_rot_sixd_reshaped = torch.tensor(self.sixd_add_root(recon_rot_sixd_reshaped, cached_intermediate_orientation_yaw_shaped), device=self.device)
+        #recon_rot_sixd_reshaped = recon_rot_sixd_reshaped.reshape(-1,24, 3, 2)
 
 
-        third_column = np.cross(
-            recon_rot_sixd_reshaped[..., 0],
-            recon_rot_sixd_reshaped[..., 1],
-            axis=-1,
-        )
-        recon_rot_rotmat = np.concatenate(
-            [recon_rot_sixd_reshaped, third_column[..., None]], axis=-1
-        )
-        recon_rot_quat = Rotation.from_matrix(recon_rot_rotmat.reshape(-1,3,3)).as_quat()
-        recon_rot_quat = recon_rot_quat.reshape(-1,24,4)
-        recon_rot_quat =  torch.as_tensor(recon_rot_quat, dtype=torch.float, device = self.device)
+        # third_column = np.cross(
+        #     recon_rot_sixd_reshaped[..., 0],
+        #     recon_rot_sixd_reshaped[..., 1],
+        #     axis=-1,
+        # )
+        # recon_rot_rotmat = np.concatenate(
+        #     [recon_rot_sixd_reshaped, third_column[..., None]], axis=-1
+        # )
+        # recon_rot_quat = Rotation.from_matrix(recon_rot_rotmat.reshape(-1,3,3)).as_quat()
+        # recon_rot_quat = recon_rot_quat.reshape(-1,24,4)
+        # recon_rot_quat =  torch.as_tensor(recon_rot_quat, dtype=torch.float, device = self.device)
         
 
         # testing out-of-distribution tracking
@@ -2055,18 +2087,19 @@ class HumanoidAeMcpPnn6(VecTask):
         rb_pos_reshaped = motion_res["rg_pos"].reshape(-1,24, 3)
         mutated_trans = rb_pos_reshaped[:,0,...] * 1
         #TODO addition or setting?
-        mutated_trans[...,:2] += input_lats_importance * self.input_lats[:,13:15]
+        mutated_trans[...,:2] += input_lats_importance * self.input_lats[:,7:9]
+        cvae_decoded_with_yaw[:,:, :2] += mutated_trans[:,None,:2]
 
-        recon_sk_state = SkeletonState.from_rotation_and_root_translation(
-            self.sk_tree,
-            recon_rot_quat,
-            torch.as_tensor(mutated_trans, dtype=torch.float, device = self.device),
-            is_local=False,
-        )
-        self.blue_rb_xyz = motion_res["rg_pos"]
+        # recon_sk_state = SkeletonState.from_rotation_and_root_translation(
+        #     self.sk_tree,
+        #     recon_rot_quat,
+        #     torch.as_tensor(mutated_trans, dtype=torch.float, device = self.device),
+        #     is_local=False,
+        # )
+        self.blue_rb_xyz = motion_res["rg_pos"].reshape(self.num_envs * num_agents, -1)
         motion_res["rg_pos"] = motion_res["rg_pos"]-torch.tensor((0,0,0.0323),device=self.device)
-        self.ref_body_pos = recon_sk_state.global_translation.detach().to(self.device)
-
+        # self.ref_body_pos = recon_sk_state.global_translation.detach().to(self.device)
+        self.ref_body_pos = cvae_decoded_with_yaw -torch.tensor((0,0,0.0323),device=self.device)
         if(force_t_pose):
 
             #Override to ensure the second character stays in the T-pose.
@@ -2074,14 +2107,14 @@ class HumanoidAeMcpPnn6(VecTask):
             self.ref_body_pos[:,1,...] = self.ref_rb_pos.reshape(self.num_envs,num_agents, -1, 3)[:,1,...].clone()
 
         self.red_rb_root_xyz = mutated_trans
-        self.red_rb_root_rot_sixd = torch.tensor(recon_rot_sixd_reshaped[:,0].reshape(-1,6), device=self.device)
+        #self.red_rb_root_rot_sixd = torch.tensor(recon_rot_sixd_reshaped[:,0].reshape(-1,6), device=self.device)
         self.red_rb_root_vel = intermediate_ys[:,7:10] #motion_res["body_vel"][:,0] * 0 #TODO find the linear velocity!
         self.red_rb_root_ang_vel = intermediate_ys[:,10:]
-        self.red_joint_angles = torch.tensor(recon_rot_sixd_reshaped.reshape(self.num_envs * num_agents, -1), device=self.device)
-        self.red_joint_ang_vel = recon_rb_ang_velocity_reshaped.reshape(self.num_envs * num_agents, -1)
+        #self.red_joint_angles = torch.tensor(recon_rot_sixd_reshaped.reshape(self.num_envs * num_agents, -1), device=self.device)
+        # self.red_joint_ang_vel = recon_rb_ang_velocity_reshaped.reshape(self.num_envs * num_agents, -1)
 
 
-        self.red_rb_xyz = self.ref_body_pos
+        self.red_rb_xyz = self.ref_body_pos.reshape(self.num_envs * num_agents, -1)
         self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
         
         self.modified_ref_body_pos = self.ref_body_pos.clone()
