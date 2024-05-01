@@ -7,12 +7,10 @@ physics_engine: ${..physics_engine}
 
 env:
   numEnvs: 1536
-  envSpacing: 3
-  episodeLength: 100
+  envSpacing: 16
+  episodeLength: 800
   isFlagrun: False
   enableDebugVis: False
-
-  clipActions: 1.0
 
   ae_type: "cvae"  #Can be {ae, vae, cvae, none}
   actor_init_pos: "static" # Can be {static, random, back_to_back}

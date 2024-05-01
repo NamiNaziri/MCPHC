@@ -1,11 +1,10 @@
 #!/bin/bash
 
 
-#SBATCH --time=24:00:00
+#SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32gb
 #SBATCH --gres=gpu:1
-#SBATCH --constraint="a100"
 
 echo "$1"
 experiment_name=$1

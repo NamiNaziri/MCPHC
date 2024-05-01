@@ -165,7 +165,7 @@ def add_root_yaw_to_sixd(sixd: torch.Tensor, root_yaw: torch.Tensor) -> torch.Te
     return new_sixd
 
 
-class HumanoidAeMcpPnn7(VecTask):
+class HumanoidAeMcpPnn6(VecTask):
     """
     A humanoid character following PHC character specification,
     controlled via latents for the input AE. Then the downstream actions are
@@ -1560,7 +1560,7 @@ class HumanoidAeMcpPnn7(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert False
 
-        self._num_self_obs = 78 + 75  # red + blue guy observation
+        self._num_self_obs = 75 + 75  # red + blue guy observation
         # Account for all agents
         self._num_self_obs *= num_agents
 
@@ -2376,7 +2376,7 @@ class HumanoidAeMcpPnn7(VecTask):
             self.blue_rb_root_xyz.reshape(self.num_envs, -1),
             self.red_rb_root_xyz.reshape(self.num_envs, -1),
             self.blue_joint_angles.reshape(self.num_envs, -1),
-            self.prev_red_rb_root_xyz.reshape(self.num_envs, -1),
+            self.red_joint_angles.reshape(self.num_envs, -1),
             self.blue_rb_xyz.reshape(self.num_envs, -1),
             self.red_rb_xyz.reshape(self.num_envs, -1),
             self.ref_body_root_rot.reshape(self.num_envs, -1),
@@ -2392,8 +2392,6 @@ class HumanoidAeMcpPnn7(VecTask):
             self.blue_rb_xyz,
             self.red_rb_xyz,
             self.ref_body_root_rot,
-            self.red_rb_root_xyz,
-            self.prev_red_rb_root_xyz,
             self.max_episode_length,
             self._enable_early_termination,
         )
@@ -2432,9 +2430,7 @@ class HumanoidAeMcpPnn7(VecTask):
         # self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
         #                         self.red_rb_root_ang_vel, self.red_joint_angles, self.red_joint_ang_vel], dim=-1)
         self.blue_obs = torch.cat([self.blue_rb_root_xyz, self.blue_rb_xyz], dim=-1)
-        self.red_obs = torch.cat(
-            [self.prev_red_rb_root_xyz, self.red_rb_root_xyz, self.red_rb_xyz], dim=-1
-        )
+        self.red_obs = torch.cat([self.red_rb_root_xyz, self.red_rb_xyz], dim=-1)
 
         if env_ids is None:
 
@@ -2448,7 +2444,6 @@ class HumanoidAeMcpPnn7(VecTask):
         else:
             # new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[env_ids] = torch.cat([new_obs[...,358:]], dim=-1)
-            # TODO fix this to use env ids
             self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs], dim=-1).reshape(
                 self.obs_buf.shape[0], -1
             )
@@ -2745,7 +2740,6 @@ class HumanoidAeMcpPnn7(VecTask):
             self.ref_body_root_rot = rb_rot_sixd[:, 0]
 
             self.red_rb_xyz = self.blue_rb_xyz
-            self.prev_red_rb_root_xyz = self.blue_rb_root_xyz
             self.red_rb_root_xyz = self.blue_rb_root_xyz
             self.red_rb_root_rot_sixd = self.blue_rb_root_rot_sixd
             self.red_rb_root_vel = self.blue_rb_root_vel
@@ -2770,7 +2764,6 @@ class HumanoidAeMcpPnn7(VecTask):
             self.ref_body_root_rot[env_ids] = rb_rot_sixd[:, 0]
 
             self.red_rb_xyz[env_ids] = self.blue_rb_xyz[env_ids]
-            self.prev_red_rb_root_xyz[env_ids] = self.blue_rb_root_xyz[env_ids]
             self.red_rb_root_xyz[env_ids] = self.blue_rb_root_xyz[env_ids]
             self.red_rb_root_rot_sixd[env_ids] = self.blue_rb_root_rot_sixd[env_ids]
             self.red_rb_root_vel[env_ids] = self.blue_rb_root_vel[env_ids]
@@ -3275,41 +3268,14 @@ class HumanoidAeMcpPnn7(VecTask):
         # For sanity check, just apply xyz and latent. Worry about rpy later.
         # edited_ys = torch.cat([self.ref_body_root_pos, self.ref_body_root_rot], dim=-1)
         edited_ys = raw_ys * 1
-        # change the root xy based on action
-        # TODO maybe instead of doing this, it would be good to condition on root xy as well. not exactly but some form of it.
-        edited_ys[..., :2] += xyz_edit[..., :2]
         edited_rotmat = sixd_to_rotmat(edited_ys[..., 3:9])
         yaw_edit = rpy_edit[..., -1] * 1
-        edit_rot = Rotation.from_euler("z", yaw_edit)
+        edit_rot = Rotation.from_euler("Z", yaw_edit)
         edited_rot = edit_rot * Rotation.from_matrix(edited_rotmat)
 
         z = 0 * input_lats_importance * latent_edit + input_my_lats_importance * mu
 
         decoder_ys = encoder_ys * 1  # NOTE: later we want to include edits to root here
-
-        # # change root z of decoder using actions
-        # decoder_ys_root_z = decoder_ys[..., 0]
-        # decoder_ys_root_z += xyz_edit[..., 2]
-
-        # # change pitch and roll of root based on action (we can fully rotate and then snap yaw, or just rotate pitch and roll?)
-        # decoder_ys_rotmat = sixd_to_rotmat(decoder_ys[..., 1:7])
-        # decoder_pitch_roll_edit = rpy_edit[..., 0:3] * 1
-        # decoder_pitch_roll_edit[..., 0] = 0
-        # decoder_pitch_roll_edit_rot = Rotation.from_euler(
-        #     "zyx", decoder_pitch_roll_edit
-        # )
-        # decoder_edited_rot = decoder_pitch_roll_edit_rot * Rotation.from_matrix(
-        #     decoder_ys_rotmat
-        # )
-
-        # decoder_good_sixd = torch.as_tensor(
-        #     decoder_edited_rot.as_matrix().reshape((-1, 3, 3))[..., :2].reshape(-1, 6),
-        #     dtype=torch.float,
-        #     device=self.device,
-        # )
-
-        # decoder_ys[..., 1:7] = decoder_good_sixd
-
         cvae_decoded = self.ae.decode(z, decoder_ys)
         cvae_decoded = cvae_decoded.reshape(self.num_envs * num_agents, 24, -1)
 
@@ -3317,9 +3283,9 @@ class HumanoidAeMcpPnn7(VecTask):
         # Note that we only need to add back yaw because pitch and roll are taken into account by the decoder
         # edited_rotmat = sixd_to_rotmat(edited_ys[..., 3:9])
         # edited_rot = Rotation.from_matrix(edited_rotmat)
-        edited_yaw = edited_rot.as_euler("zyx")[..., 0]
+        edited_yaw = edited_rot.as_euler("ZYX")[..., 0]
         good_rotmat = torch.as_tensor(
-            Rotation.from_euler("z", edited_yaw).as_matrix(),
+            Rotation.from_euler("Z", edited_yaw).as_matrix(),
             dtype=torch.float,
             device=self.device,
         )
@@ -3330,21 +3296,16 @@ class HumanoidAeMcpPnn7(VecTask):
         )
 
         # Apply rotation
-        # 1. Remove root from position so it is positioned at the origin
         tmp = cvae_decoded[:, [0]] * 1
         cvae_decoded -= tmp
-
-        # 2. rotate yaw
         cvae_decoded_with_yaw = torch.einsum(
             "nab, npb -> npa", good_rotmat, cvae_decoded
         )
-
-        # 3. add back the position
         cvae_decoded_with_yaw += tmp
 
         # Bring to original position
         cvae_decoded_with_yaw[..., :2] += edited_ys[..., None, :2]
-        cvae_decoded_with_yaw[..., -1] -= tmp[..., -1]  # TODO WHY?
+        cvae_decoded_with_yaw[..., -1] -= tmp[..., -1]
         cvae_decoded_with_yaw[..., -1] += edited_ys[..., None, 2]
 
         self.blue_rb_xyz = motion_res["rg_pos"].reshape(self.num_envs * num_agents, -1)
@@ -3352,9 +3313,7 @@ class HumanoidAeMcpPnn7(VecTask):
         self.ref_body_pos = cvae_decoded_with_yaw
 
         # Use these as stateful features
-        self.ref_body_root_pos = edited_ys[
-            ..., :3
-        ]  # TODO this is not used anywhjere but isn't the actual root pose cvae_decoded_with_yaw[..., 0, :3] ? does it matter?
+        self.ref_body_root_pos = edited_ys[..., :3]
         self.ref_body_root_rot = good_sixd
         if force_t_pose:
 
@@ -3366,7 +3325,6 @@ class HumanoidAeMcpPnn7(VecTask):
                 self.num_envs, num_agents, -1, 3
             )[:, 1, ...].clone()
 
-        self.prev_red_rb_root_xyz = self.red_rb_root_xyz.clone()
         self.red_rb_root_xyz = edited_ys[..., :3]
         self.red_rb_xyz = self.ref_body_pos.reshape(self.num_envs * num_agents, -1)
         self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
@@ -4036,28 +3994,19 @@ def compute_humanoid_observations_max(
     return obs
 
 
-# @torch.jit.script
+@torch.jit.script
 def compute_humanoid_reward(
     blue_obs,
     red_obs,
     blue_rb_root_xyz,
     red_rb_root_xyz,
     blue_joint_angles,
-    prev_red_rb_root_xyz,
+    red_joint_angles,
     blue_rb_xyz,
     red_rb_xyz,
     red_root_sixd,
 ):
     # type: (  Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tensor
-    root_velocity = (prev_red_rb_root_xyz - red_rb_root_xyz) / 0.01666666666
-    mse_velocity_loss = torch.nn.functional.mse_loss(
-        root_velocity,
-        torch.tensor([[1, 0, 0]], device=root_velocity.device).repeat(
-            root_velocity.shape[0], 1
-        ),
-    )
-    velocity_loss_result = torch.mean(mse_velocity_loss, dim=-1)
-    velocity_reward = torch.exp(-1 * velocity_loss_result)
 
     delta_xyz = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
     delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
@@ -4069,7 +4018,7 @@ def compute_humanoid_reward(
     #     -(cossim_x**2)
     # )
     reward = cossim_x
-    return velocity_reward
+    return reward
 
 
 # @torch.jit.script
@@ -4079,29 +4028,19 @@ def compute_humanoid_reset(
     blue_rb_xyz,
     red_rb_xyz,
     red_root_sixd,
-    red_rb_root_xyz,
-    prev_red_rb_root_xyz,
     max_episode_length,
     enable_early_termination,
 ):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)
     # enable_early_termination
     if enable_early_termination:
-        # delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
-        # delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
-        # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
-        # cossim_x = torch.cosine_similarity(
-        #     red_root_sixd[..., :3], target_x_axis, dim=-1
-        # )
-
         delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
         delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
-
-        velocity = red_rb_root_xyz - prev_red_rb_root_xyz
         target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
-        cossim_x = torch.cosine_similarity(velocity, target_x_axis, dim=-1)
-
+        cossim_x = torch.cosine_similarity(
+            red_root_sixd[..., :3], target_x_axis, dim=-1
+        )
         # terminated = delta_mean_norm > 5e-1
         terminated = cossim_x < 0
         terminated *= progress_buf > 1

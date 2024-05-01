@@ -7,11 +7,15 @@ physics_engine: ${..physics_engine}
 
 env:
   numEnvs: 1536
-  envSpacing: 5
-  episodeLength: 1200
+  envSpacing: 3
+  episodeLength: 800
   isFlagrun: False
   enableDebugVis: False
-  
+
+  ae_type: "cvae"  #Can be {ae, vae, cvae, none}
+  actor_init_pos: "static" # Can be {static, random, back_to_back}
+  root_motion: True
+
   bias_offset: False
   has_self_collision: True
   has_mesh: False
@@ -72,7 +76,7 @@ env:
   localRootObs: True
   rootHeightObs: True
   keyBodies: ["R_Ankle", "L_Ankle", "R_Wrist",  "L_Wrist"]
-  contactBodies: ["R_Ankle", "L_Ankle", "R_Toe", "L_Toe"]
+  contactBodies: ["R_Ankle", "L_Ankle", "R_Toe", "L_Toe", "L_Knee", "R_Knee"]
   resetBodies: ['Pelvis', 'L_Hip', 'L_Knee', 'R_Hip', 'R_Knee', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
   terminationHeight: 0.15
   enableEarlyTermination: True
@@ -109,6 +113,9 @@ sim:
     bounce_threshold_velocity: 0.2
     max_depenetration_velocity: 10.0
     default_buffer_size_multiplier: 10.0
+    
+    max_gpu_contact_pairs: 11985500
+    
 
   flex:
     num_inner_iterations: 10

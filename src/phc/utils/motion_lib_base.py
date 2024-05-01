@@ -1,9 +1,9 @@
-
 import glob
 import os
 import sys
 import pdb
 import os.path as osp
+
 sys.path.append(os.getcwd())
 
 import numpy as np
@@ -21,6 +21,7 @@ from scipy.spatial.transform import Rotation as sRot
 import random
 from phc.utils.flags import flags
 from enum import Enum
+
 USE_CACHE = True
 print("MOVING MOTION DATA TO GPU, USING CACHE:", USE_CACHE)
 
@@ -29,6 +30,7 @@ class FixHeightMode(Enum):
     no_fix = 0
     full_fix = 1
     ankle_fix = 2
+
 
 if not USE_CACHE:
     old_numpy = torch.Tensor.numpy
@@ -46,7 +48,9 @@ if not USE_CACHE:
 
 def local_rotation_to_dof_vel(local_rot0, local_rot1, dt):
     # Assume each joint is 3dof
-    diff_quat_data = torch_utils.quat_mul(torch_utils.quat_conjugate(local_rot0), local_rot1)
+    diff_quat_data = torch_utils.quat_mul(
+        torch_utils.quat_conjugate(local_rot0), local_rot1
+    )
     diff_angle, diff_axis = torch_utils.quat_to_angle_axis(diff_quat_data)
     dof_vel = diff_axis * diff_angle.unsqueeze(-1) / dt
 
@@ -107,28 +111,47 @@ class DeviceCache:
         out = getattr(self.obj, string)
         return out
 
+
 class MotionlibMode(Enum):
     file = 1
     directory = 2
 
-class MotionLibBase():
 
-    def __init__(self, motion_file,  device, fix_height=FixHeightMode.full_fix, masterfoot_conifg=None, min_length=-1, im_eval=False, multi_thread=True):
+class MotionLibBase:
+
+    def __init__(
+        self,
+        motion_file,
+        device,
+        fix_height=FixHeightMode.full_fix,
+        masterfoot_conifg=None,
+        min_length=-1,
+        im_eval=False,
+        multi_thread=True,
+    ):
 
         self._device = device
         self.mesh_parsers = None
 
-        self.load_data(motion_file,  min_length = min_length, im_eval = im_eval)
-        self.setup_constants(fix_height = fix_height, masterfoot_conifg = masterfoot_conifg, multi_thread = multi_thread)
-        
+        self.load_data(motion_file, min_length=min_length, im_eval=im_eval)
+        self.setup_constants(
+            fix_height=fix_height,
+            masterfoot_conifg=masterfoot_conifg,
+            multi_thread=multi_thread,
+        )
+
         if flags.real_traj:
             if self._masterfoot_conifg is None:
-                self.track_idx = self._motion_data_load[next(iter(self._motion_data_load))].get("track_idx", [13, 18, 23])
+                self.track_idx = self._motion_data_load[
+                    next(iter(self._motion_data_load))
+                ].get("track_idx", [13, 18, 23])
             else:
-                self.track_idx = self._motion_data_load[next(iter(self._motion_data_load))].get("track_idx", [19, 24, 29])
+                self.track_idx = self._motion_data_load[
+                    next(iter(self._motion_data_load))
+                ].get("track_idx", [19, 24, 29])
         return
 
-    def load_data(self, motion_file,  min_length=-1, im_eval = False):
+    def load_data(self, motion_file, min_length=-1, im_eval=False):
         if osp.isfile(motion_file):
             self.mode = MotionlibMode.file
             self._motion_data_load = joblib.load(motion_file)
@@ -140,9 +163,20 @@ class MotionLibBase():
 
         if self.mode == MotionlibMode.file:
             if min_length != -1:
-                data_list = {k: v for k, v in list(self._motion_data_load.items()) if len(v['pose_quat_global']) >= min_length}
+                data_list = {
+                    k: v
+                    for k, v in list(self._motion_data_load.items())
+                    if len(v["pose_quat_global"]) >= min_length
+                }
             elif im_eval:
-                data_list = {item[0]: item[1] for item in sorted(self._motion_data_load.items(), key=lambda entry: len(entry[1]['pose_quat_global']), reverse=True)}
+                data_list = {
+                    item[0]: item[1]
+                    for item in sorted(
+                        self._motion_data_load.items(),
+                        key=lambda entry: len(entry[1]["pose_quat_global"]),
+                        reverse=True,
+                    )
+                }
                 # data_list = self._motion_data
             else:
                 data_list = self._motion_data_load
@@ -155,35 +189,83 @@ class MotionLibBase():
 
         self._num_unique_motions = len(self._motion_data_list)
         if self.mode == MotionlibMode.directory:
-            self._motion_data_load = joblib.load(self._motion_data_load[0]) # set self._motion_data_load to a sample of the data
+            self._motion_data_load = joblib.load(
+                self._motion_data_load[0]
+            )  # set self._motion_data_load to a sample of the data
 
-    def setup_constants(self, fix_height = FixHeightMode.full_fix, masterfoot_conifg=None, multi_thread = True):
+    def setup_constants(
+        self,
+        fix_height=FixHeightMode.full_fix,
+        masterfoot_conifg=None,
+        multi_thread=True,
+    ):
         self._masterfoot_conifg = masterfoot_conifg
         self.fix_height = fix_height
         self.multi_thread = True
 
         #### Termination history
         self._curr_motion_ids = None
-        self._termination_history = torch.zeros(self._num_unique_motions).to(self._device)
+        self._termination_history = torch.zeros(self._num_unique_motions).to(
+            self._device
+        )
         self._success_rate = torch.zeros(self._num_unique_motions).to(self._device)
         self._sampling_history = torch.zeros(self._num_unique_motions).to(self._device)
-        self._sampling_prob = torch.ones(self._num_unique_motions).to(self._device) / self._num_unique_motions  # For use in sampling batches
+        self._sampling_prob = (
+            torch.ones(self._num_unique_motions).to(self._device)
+            / self._num_unique_motions
+        )  # For use in sampling batches
         self._sampling_batch_prob = None  # For use in sampling within batches
 
-
     @staticmethod
-    def load_motion_with_skeleton(ids, motion_data_list, skeleton_trees, gender_betas, fix_height, mesh_parsers, masterfoot_config, max_len, queue, pid):
+    def load_motion_with_skeleton(
+        ids,
+        motion_data_list,
+        skeleton_trees,
+        gender_betas,
+        fix_height,
+        mesh_parsers,
+        masterfoot_config,
+        max_len,
+        queue,
+        pid,
+    ):
         raise NotImplementedError
 
     @staticmethod
-    def fix_trans_height(pose_aa, trans, curr_gender_betas, mesh_parsers, fix_height_mode):
+    def fix_trans_height(
+        pose_aa, trans, curr_gender_betas, mesh_parsers, fix_height_mode
+    ):
         raise NotImplementedError
 
-    def load_motions(self, skeleton_trees, gender_betas, limb_weights, random_sample=True, start_idx=0, max_len=-1):
+    def load_motions(
+        self,
+        skeleton_trees,
+        gender_betas,
+        limb_weights,
+        random_sample=True,
+        start_idx=0,
+        max_len=-1,
+    ):
         # load motion load the same number of motions as there are skeletons (humanoids)
         if "gts" in self.__dict__:
-            del self.gts, self.grs, self.lrs, self.grvs, self.gravs, self.gavs, self.gvs, self.dvs,
-            del self._motion_lengths, self._motion_fps, self._motion_dt, self._motion_num_frames, self._motion_bodies, self._motion_aa
+            del (
+                self.gts,
+                self.grs,
+                self.lrs,
+                self.grvs,
+                self.gravs,
+                self.gavs,
+                self.gvs,
+                self.dvs,
+            )
+            del (
+                self._motion_lengths,
+                self._motion_fps,
+                self._motion_dt,
+                self._motion_num_frames,
+                self._motion_bodies,
+                self._motion_aa,
+            )
             if flags.real_traj:
                 del self.q_gts, self.q_grs, self.q_gavs, self.q_gvs
 
@@ -203,34 +285,48 @@ class MotionLibBase():
 
         total_len = 0.0
         self.num_joints = len(skeleton_trees[0].node_names)
-        #TODO correct this.num_motion_to_load = len(skeleton_trees)
+        # TODO correct this.num_motion_to_load = len(skeleton_trees)
         num_motion_to_load = len(skeleton_trees)
-        
+
         print(self._num_unique_motions)
         if random_sample:
-            sample_idxes = torch.multinomial(self._sampling_prob, num_samples=num_motion_to_load, replacement=True).to(self._device)
+            sample_idxes = torch.multinomial(
+                self._sampling_prob, num_samples=num_motion_to_load, replacement=True
+            ).to(self._device)
         else:
-            sample_idxes = torch.remainder(torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions ).to(self._device)
-        #sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
-        sample_idxes = torch.full((num_motion_to_load,), 4) #TODO
+            sample_idxes = torch.remainder(
+                torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions
+            ).to(self._device)
+        # sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
+        sample_idxes = torch.full((num_motion_to_load,), 4)  # TODO
 
         # import ipdb; ipdb.set_trace()
         self._curr_motion_ids = sample_idxes
-        self.one_hot_motions = torch.nn.functional.one_hot(self._curr_motion_ids, num_classes = self._num_unique_motions).to(self._device)  # Testing for obs_v5
+        self.one_hot_motions = torch.nn.functional.one_hot(
+            self._curr_motion_ids, num_classes=self._num_unique_motions
+        ).to(
+            self._device
+        )  # Testing for obs_v5
         self.curr_motion_keys = self._motion_data_keys[sample_idxes]
-        self._sampling_batch_prob = self._sampling_prob[self._curr_motion_ids] / self._sampling_prob[self._curr_motion_ids].sum()
+        self._sampling_batch_prob = (
+            self._sampling_prob[self._curr_motion_ids]
+            / self._sampling_prob[self._curr_motion_ids].sum()
+        )
 
-        print("\n****************************** Current motion keys ******************************")
+        print(
+            "\n****************************** Current motion keys ******************************"
+        )
         print("Sampling motion:", sample_idxes[:30])
         if len(self.curr_motion_keys) < 100:
             print(self.curr_motion_keys)
         else:
             print(self.curr_motion_keys[:30], ".....")
-        print("*********************************************************************************\n")
-
+        print(
+            "*********************************************************************************\n"
+        )
 
         motion_data_list = self._motion_data_list[sample_idxes.cpu().numpy()]
-        #mp.set_sharing_strategy('file_descriptor')
+        # mp.set_sharing_strategy('file_descriptor')
 
         manager = mp.Manager()
         queue = manager.Queue()
@@ -242,7 +338,7 @@ class MotionLibBase():
         if flags.debug:
             num_jobs = 4
 
-        #print(num_jobs)
+        # print(num_jobs)
         res_acc = {}  # using dictionary ensures order of the results.
         # jobs = motion_data_list
         # chunk = np.ceil(len(jobs) / num_jobs).astype(int)
@@ -258,37 +354,48 @@ class MotionLibBase():
         #     print('-test')
         #     worker.start()
         print(num_motion_to_load)
-        
-        
-        print('start dup')
-        #res_acc = torch.load('new_short_anim.pkl')
-        res_acc.update(self.load_motion_with_skeleton([0],motion_data_list[[0]],
-                                                [skeleton_trees[0]],gender_betas[[0]],self.fix_height, self.mesh_parsers,
-                                                self._masterfoot_conifg, max_len , None, 0))
+
+        print("start dup")
+        # res_acc = torch.load('new_short_anim.pkl')
+        res_acc.update(
+            self.load_motion_with_skeleton(
+                [0],
+                motion_data_list[[0]],
+                [skeleton_trees[0]],
+                gender_betas[[0]],
+                self.fix_height,
+                self.mesh_parsers,
+                self._masterfoot_conifg,
+                max_len,
+                None,
+                0,
+            )
+        )
         first = res_acc[0]
         res_acc = {i: first for i in range(num_motion_to_load)}
-        print('end dup')
-        #res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
-        #torch.save(res_acc, "test_anim.pkl")
-        #print('saved')
+        print("end dup")
+        # res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
+        # torch.save(res_acc, "test_anim.pkl")
+        # print('saved')
         # for i in tqdm(range(len(jobs) - 1)):
         #     res = queue.get()
         #     res_acc.update(res)
-        
+
         for f in tqdm(range(len(res_acc))):
             motion_file_data, curr_motion = res_acc[f]
             if USE_CACHE:
                 curr_motion = DeviceCache(curr_motion, self._device)
-        
+
             motion_fps = curr_motion.fps
             curr_dt = 1.0 / motion_fps
 
             num_frames = curr_motion.tensor.shape[0]
             curr_len = 1.0 / motion_fps * (num_frames - 1)
-        
 
             if "beta" in motion_file_data:
-                self._motion_aa.append(motion_file_data['pose_aa'].reshape(-1, self.num_joints * 3))
+                self._motion_aa.append(
+                    motion_file_data["pose_aa"].reshape(-1, self.num_joints * 3)
+                )
                 self._motion_bodies.append(curr_motion.gender_beta)
             else:
                 self._motion_aa.append(np.zeros((num_frames, self.num_joints * 3)))
@@ -301,38 +408,91 @@ class MotionLibBase():
             self._motion_lengths.append(curr_len)
 
             if flags.real_traj:
-                self.q_gts.append(curr_motion.quest_motion['quest_trans'])
-                self.q_grs.append(curr_motion.quest_motion['quest_rot'])
-                self.q_gavs.append(curr_motion.quest_motion['global_angular_vel'])
-                self.q_gvs.append(curr_motion.quest_motion['linear_vel'])
+                self.q_gts.append(curr_motion.quest_motion["quest_trans"])
+                self.q_grs.append(curr_motion.quest_motion["quest_rot"])
+                self.q_gavs.append(curr_motion.quest_motion["global_angular_vel"])
+                self.q_gvs.append(curr_motion.quest_motion["linear_vel"])
 
             del curr_motion
-        print('test3')
-        self._motion_lengths = torch.tensor(self._motion_lengths, device=self._device, dtype=torch.float32)
-        self._motion_fps = torch.tensor(self._motion_fps, device=self._device, dtype=torch.float32)
-        self._motion_bodies = torch.stack(self._motion_bodies).to(self._device).type(torch.float32)
-        self._motion_aa = torch.tensor(np.concatenate(self._motion_aa), device=self._device, dtype=torch.float32)
+        print("test3")
+        self._motion_lengths = torch.tensor(
+            self._motion_lengths, device=self._device, dtype=torch.float32
+        )
+        self._motion_fps = torch.tensor(
+            self._motion_fps, device=self._device, dtype=torch.float32
+        )
+        self._motion_bodies = (
+            torch.stack(self._motion_bodies).to(self._device).type(torch.float32)
+        )
+        self._motion_aa = torch.tensor(
+            np.concatenate(self._motion_aa), device=self._device, dtype=torch.float32
+        )
 
-        self._motion_dt = torch.tensor(self._motion_dt, device=self._device, dtype=torch.float32)
-        self._motion_num_frames = torch.tensor(self._motion_num_frames, device=self._device)
-        self._motion_limb_weights = torch.tensor(np.array(limb_weights), device=self._device, dtype=torch.float32)
+        self._motion_dt = torch.tensor(
+            self._motion_dt, device=self._device, dtype=torch.float32
+        )
+        self._motion_num_frames = torch.tensor(
+            self._motion_num_frames, device=self._device
+        )
+        self._motion_limb_weights = torch.tensor(
+            np.array(limb_weights), device=self._device, dtype=torch.float32
+        )
         self._num_motions = len(motions)
 
-        self.gts = torch.cat([m.global_translation for m in motions], dim=0).float().to(self._device)
-        self.grs = torch.cat([m.global_rotation for m in motions], dim=0).float().to(self._device)
-        self.lrs = torch.cat([m.local_rotation for m in motions], dim=0).float().to(self._device)
-        self.grvs = torch.cat([m.global_root_velocity for m in motions], dim=0).float().to(self._device)
-        self.gravs = torch.cat([m.global_root_angular_velocity for m in motions], dim=0).float().to(self._device)
-        self.gavs = torch.cat([m.global_angular_velocity for m in motions], dim=0).float().to(self._device)
-        self.gvs = torch.cat([m.global_velocity for m in motions], dim=0).float().to(self._device)
-        self.dvs = torch.cat([m.dof_vels for m in motions], dim=0).float().to(self._device)
-        self.lts = torch.cat([m.local_translation for m in motions], dim=0).float().to(self._device)
-        self.ltf = torch.cat([m.local_transformation for m in motions], dim=0).float().to(self._device)
-        file_path = 'torchready_all.pkl'
+        self.gts = (
+            torch.cat([m.global_translation for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.grs = (
+            torch.cat([m.global_rotation for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.lrs = (
+            torch.cat([m.local_rotation for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.grvs = (
+            torch.cat([m.global_root_velocity for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.gravs = (
+            torch.cat([m.global_root_angular_velocity for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.gavs = (
+            torch.cat([m.global_angular_velocity for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.gvs = (
+            torch.cat([m.global_velocity for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.dvs = (
+            torch.cat([m.dof_vels for m in motions], dim=0).float().to(self._device)
+        )
+        self.lts = (
+            torch.cat([m.local_translation for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        self.ltf = (
+            torch.cat([m.local_transformation for m in motions], dim=0)
+            .float()
+            .to(self._device)
+        )
+        file_path = "torchready_all.pkl"
 
         import pickle
+
         # Save the dictionary to the pickle file
-        with open(file_path, 'wb') as file:
+        with open(file_path, "wb") as file:
             pickle.dump(self.gts, file)
         if flags.real_traj:
             self.q_gts = torch.cat(self.q_gts, dim=0).float().to(self._device)
@@ -344,13 +504,17 @@ class MotionLibBase():
         lengths_shifted = lengths.roll(1)
         lengths_shifted[0] = 0
         self.length_starts = lengths_shifted.cumsum(0)
-        self.motion_ids = torch.arange(len(motions), dtype=torch.long, device=self._device)
+        self.motion_ids = torch.arange(
+            len(motions), dtype=torch.long, device=self._device
+        )
         motion = motions[0]
         self.num_bodies = motion.num_joints
 
         num_motions = self.num_motions()
         total_len = self.get_total_length()
-        print(f"Loaded {num_motions:d} motions with a total length of {total_len:.3f}s and {self.gts.shape[0]} frames.")
+        print(
+            f"Loaded {num_motions:d} motions with a total length of {total_len:.3f}s and {self.gts.shape[0]} frames."
+        )
         return motions
 
     def num_motions(self):
@@ -360,7 +524,7 @@ class MotionLibBase():
         return sum(self._motion_lengths)
 
     # def update_sampling_weight(self):
-    #     ## sampling weight based on success rate. 
+    #     ## sampling weight based on success rate.
     #     # sampling_temp = 0.2
     #     sampling_temp = 0.1
     #     curr_termination_prob = 0.5
@@ -375,16 +539,16 @@ class MotionLibBase():
 
     #     topk_sampled = self._sampling_prob.topk(50)
     #     print("Current most sampled", self._motion_data_keys[topk_sampled.indices.cpu().numpy()])
-    def get_global_translation_from_local(self, local_translation, local_transformation):
+    def get_global_translation_from_local(
+        self, local_translation, local_transformation
+    ):
         global_transformation = []
         parent_indices = self.skeleton_tree.parent_indices.numpy()
         # global_transformation = local_transformation.identity_like()
         for node_index in range(len(self.skeleton_tree)):
             parent_index = parent_indices[node_index]
             if parent_index == -1:
-                global_transformation.append(
-                    local_transformation[..., node_index, :]
-                )
+                global_transformation.append(local_transformation[..., node_index, :])
             else:
                 global_transformation.append(
                     transform_mul(
@@ -394,44 +558,56 @@ class MotionLibBase():
                 )
         self._global_transformation = torch.stack(global_transformation, axis=-2)
         return self._global_transformation
+
     def update_hard_sampling_weight(self, failed_keys):
-        # sampling weight based on evaluation, only trained on "failed" sequences. Auto PMCP. 
+        # sampling weight based on evaluation, only trained on "failed" sequences. Auto PMCP.
         if len(failed_keys) > 0:
             all_keys = self._motion_data_keys.tolist()
             indexes = [all_keys.index(k) for k in failed_keys]
             self._sampling_prob[:] = 0
-            self._sampling_prob[indexes] = 1/len(indexes)
-            print("############################################################ Auto PMCP ############################################################")
+            self._sampling_prob[indexes] = 1 / len(indexes)
+            print(
+                "############################################################ Auto PMCP ############################################################"
+            )
             print(f"Training on only {len(failed_keys)} seqs")
             print(failed_keys)
         else:
             all_keys = self._motion_data_keys.tolist()
-            self._sampling_prob = torch.ones(self._num_unique_motions).to(self._device) / self._num_unique_motions  # For use in sampling batches
+            self._sampling_prob = (
+                torch.ones(self._num_unique_motions).to(self._device)
+                / self._num_unique_motions
+            )  # For use in sampling batches
 
     def update_soft_sampling_weight(self, failed_keys):
-        # sampling weight based on evaluation, only "mostly" trained on "failed" sequences. Auto PMCP. 
+        # sampling weight based on evaluation, only "mostly" trained on "failed" sequences. Auto PMCP.
         if len(failed_keys) > 0:
             all_keys = self._motion_data_keys.tolist()
             indexes = [all_keys.index(k) for k in failed_keys]
             self._termination_history[indexes] += 1
             self.update_sampling_prob(self._termination_history)
 
-            print("############################################################ Auto PMCP ############################################################")
+            print(
+                "############################################################ Auto PMCP ############################################################"
+            )
             print(f"Training mostly on {len(self._sampling_prob.nonzero())} seqs ")
             print(self._motion_data_keys[self._sampling_prob.nonzero()].flatten())
-            print(f"###############################################################################################################################")
+            print(
+                f"###############################################################################################################################"
+            )
         else:
             all_keys = self._motion_data_keys.tolist()
-            self._sampling_prob = torch.ones(self._num_unique_motions).to(self._device) / self._num_unique_motions  # For use in sampling batches
+            self._sampling_prob = (
+                torch.ones(self._num_unique_motions).to(self._device)
+                / self._num_unique_motions
+            )  # For use in sampling batches
 
     def update_sampling_prob(self, termination_history):
         if len(termination_history) == len(self._termination_history):
-            self._sampling_prob[:] = termination_history/termination_history.sum()
+            self._sampling_prob[:] = termination_history / termination_history.sum()
             self._termination_history = termination_history
             return True
         else:
             return False
-
 
     # def update_sampling_history(self, env_ids):
     #     self._sampling_history[self._curr_motion_ids[env_ids]] += 1
@@ -442,7 +618,9 @@ class MotionLibBase():
     #     # print("termination history: ", self._termination_history[self._curr_motion_ids])
 
     def sample_motions(self, n):
-        motion_ids = torch.multinomial(self._sampling_batch_prob, num_samples=n, replacement=True).to(self._device)
+        motion_ids = torch.multinomial(
+            self._sampling_batch_prob, num_samples=n, replacement=True
+        ).to(self._device)
 
         return motion_ids
 
@@ -450,8 +628,8 @@ class MotionLibBase():
         n = len(motion_ids)
         phase = torch.rand(motion_ids.shape, device=self._device)
         motion_len = self._motion_lengths[motion_ids]
-        if (truncate_time is not None):
-            assert (truncate_time >= 0.0)
+        if truncate_time is not None:
+            assert truncate_time >= 0.0
             motion_len -= truncate_time
 
         motion_time = phase * motion_len
@@ -460,8 +638,8 @@ class MotionLibBase():
     def sample_time_interval(self, motion_ids, truncate_time=None):
         phase = torch.rand(motion_ids.shape, device=self._device)
         motion_len = self._motion_lengths[motion_ids]
-        if (truncate_time is not None):
-            assert (truncate_time >= 0.0)
+        if truncate_time is not None:
+            assert truncate_time >= 0.0
             motion_len -= truncate_time
         curr_fps = 1 / 30
         motion_time = ((phase * motion_len) / curr_fps).long() * curr_fps
@@ -481,14 +659,16 @@ class MotionLibBase():
             return (self._motion_num_frames[motion_ids] * 30 / self._motion_fps).int()
 
     def get_motion_state(self, motion_ids, motion_times, offset=None):
-        #n = len(motion_ids)
-        #num_bodies = self._get_num_bodies()
+        # n = len(motion_ids)
+        # num_bodies = self._get_num_bodies()
 
         motion_len = self._motion_lengths[motion_ids]
         num_frames = self._motion_num_frames[motion_ids]
         dt = self._motion_dt[motion_ids]
 
-        frame_idx0, frame_idx1, blend = self._calc_frame_blend(motion_times, motion_len, num_frames, dt)
+        frame_idx0, frame_idx1, blend = self._calc_frame_blend(
+            motion_times, motion_len, num_frames, dt
+        )
         # print("non_interval", frame_idx0, frame_idx1)
         f0l = frame_idx0 + self.length_starts[motion_ids]
         f1l = frame_idx1 + self.length_starts[motion_ids]
@@ -508,7 +688,18 @@ class MotionLibBase():
         dof_vel0 = self.dvs[f0l]
         dof_vel1 = self.dvs[f1l]
 
-        vals = [local_rot0, local_rot1, body_vel0, body_vel1, body_ang_vel0, body_ang_vel1, rg_pos0, rg_pos1, dof_vel0, dof_vel1]
+        vals = [
+            local_rot0,
+            local_rot1,
+            body_vel0,
+            body_vel1,
+            body_ang_vel0,
+            body_ang_vel1,
+            rg_pos0,
+            rg_pos1,
+            dof_vel0,
+            dof_vel1,
+        ]
         for v in vals:
             assert v.dtype != torch.float64
 
@@ -517,16 +708,21 @@ class MotionLibBase():
         blend_exp = blend.unsqueeze(-1)
 
         if offset is None:
-            rg_pos = (1.0 - blend_exp) * rg_pos0 + blend_exp * rg_pos1  # ZL: apply offset
+            rg_pos = (
+                1.0 - blend_exp
+            ) * rg_pos0 + blend_exp * rg_pos1  # ZL: apply offset
         else:
-            rg_pos = (1.0 - blend_exp) * rg_pos0 + blend_exp * rg_pos1 + offset[..., None, :]  # ZL: apply offset
+            rg_pos = (
+                (1.0 - blend_exp) * rg_pos0 + blend_exp * rg_pos1 + offset[..., None, :]
+            )  # ZL: apply offset
 
         body_vel = (1.0 - blend_exp) * body_vel0 + blend_exp * body_vel1
         body_ang_vel = (1.0 - blend_exp) * body_ang_vel0 + blend_exp * body_ang_vel1
         dof_vel = (1.0 - blend_exp) * dof_vel0 + blend_exp * dof_vel1
 
-
-        local_rot = torch_utils.slerp(local_rot0, local_rot1, torch.unsqueeze(blend, axis=-1))
+        local_rot = torch_utils.slerp(
+            local_rot0, local_rot1, torch.unsqueeze(blend, axis=-1)
+        )
         dof_pos = self._local_rotation_to_dof_smpl(local_rot)
 
         rb_rot0 = self.grs[f0l]
@@ -539,7 +735,9 @@ class MotionLibBase():
             q_rg_pos0, q_rg_pos1 = self.q_gts[f0l, :], self.q_gts[f1l, :]
             q_body_vel0, q_body_vel1 = self.q_gvs[f0l], self.q_gvs[f1l]
 
-            q_ang_vel = (1.0 - blend_exp) * q_body_ang_vel0 + blend_exp * q_body_ang_vel1
+            q_ang_vel = (
+                1.0 - blend_exp
+            ) * q_body_ang_vel0 + blend_exp * q_body_ang_vel1
             q_rb_rot = torch_utils.slerp(q_rb_rot0, q_rb_rot1, blend_exp)
             q_rg_pos = (1.0 - blend_exp) * q_rg_pos0 + blend_exp * q_rg_pos1
             q_body_vel = (1.0 - blend_exp) * q_body_vel0 + blend_exp * q_body_vel1
@@ -573,7 +771,9 @@ class MotionLibBase():
         num_frames = self._motion_num_frames[motion_ids]
         dt = self._motion_dt[motion_ids]
 
-        frame_idx0, frame_idx1, blend = self._calc_frame_blend(motion_times, motion_len, num_frames, dt)
+        frame_idx0, frame_idx1, blend = self._calc_frame_blend(
+            motion_times, motion_len, num_frames, dt
+        )
         # print("non_interval", frame_idx0, frame_idx1)
         f0l = frame_idx0 + self.length_starts[motion_ids]
         f1l = frame_idx1 + self.length_starts[motion_ids]
@@ -600,7 +800,9 @@ class MotionLibBase():
 
         frame_idx0 = (phase * (num_frames - 1)).long()
         frame_idx1 = torch.min(frame_idx0 + 1, num_frames - 1)
-        blend = torch.clip((time - frame_idx0 * dt) / dt, 0.0, 1.0) # clip blend to be within 0 and 1
+        blend = torch.clip(
+            (time - frame_idx0 * dt) / dt, 0.0, 1.0
+        )  # clip blend to be within 0 and 1
 
         return frame_idx0, frame_idx1, blend
 
