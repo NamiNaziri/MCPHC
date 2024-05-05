@@ -165,6 +165,8 @@ def add_root_yaw_to_sixd(sixd: torch.Tensor, root_yaw: torch.Tensor) -> torch.Te
     return new_sixd
 
 
+# This is the old ppnn6 that worked
+# cvae_full_no_termination_velocity_and_yaw_reward
 class HumanoidAeMcpPnn7(VecTask):
     """
     A humanoid character following PHC character specification,
@@ -1287,6 +1289,8 @@ class HumanoidAeMcpPnn7(VecTask):
             return (
                 3 + 3 + 16
             ) * num_agents  # root xyz edit + root rpy edit + latent space edit
+
+            # return 3
         else:
             return 10 * num_agents
         # return self._num_actions
@@ -1560,7 +1564,7 @@ class HumanoidAeMcpPnn7(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert False
 
-        self._num_self_obs = 78 + 75  # red + blue guy observation
+        self._num_self_obs = 75 + 75  # red + blue guy observation
         # Account for all agents
         self._num_self_obs *= num_agents
 
@@ -2433,7 +2437,11 @@ class HumanoidAeMcpPnn7(VecTask):
         #                         self.red_rb_root_ang_vel, self.red_joint_angles, self.red_joint_ang_vel], dim=-1)
         self.blue_obs = torch.cat([self.blue_rb_root_xyz, self.blue_rb_xyz], dim=-1)
         self.red_obs = torch.cat(
-            [self.prev_red_rb_root_xyz, self.red_rb_root_xyz, self.red_rb_xyz], dim=-1
+            [
+                self.red_rb_root_xyz,
+                self.red_rb_xyz,
+            ],
+            dim=-1,
         )
 
         if env_ids is None:
@@ -3010,10 +3018,10 @@ class HumanoidAeMcpPnn7(VecTask):
         # cached_root_pos =  self.ref_rb_pos[:,[0],:2].clone()
         # self.ref_rb_pos[:, :, :2]  -=  self.ref_rb_pos[:,[0],:2]
 
-        full_action = (
+        self.full_action = (
             actions.to(self.device).clone().view(self.num_envs * num_agents, -1)
         )
-        self.input_lats = full_action.clone()
+        self.input_lats = self.full_action.clone()
         # print(self.input_lats)
         if len(self.input_lats.shape) == 1:
             self.input_lats = self.input_lats[None]
@@ -3041,6 +3049,7 @@ class HumanoidAeMcpPnn7(VecTask):
                 force_t_pose=False,
             )
         elif self.ae_type == "cvae":
+
             self.pre_physics_step_cvae(
                 motion_res,
                 input_lats_importance=1e0,
@@ -3238,7 +3247,7 @@ class HumanoidAeMcpPnn7(VecTask):
         # raw_ys for root position and orientation that ignores any kind of invariance snapping
         raw_ys = torch.cat(
             [
-                motion_res["rg_pos"].reshape(-1, 24, 3)[:, 0],
+                self.red_rb_root_xyz,
                 rb_rot_sixd.reshape(-1, 24, 6)[:, 0, :],
             ],
             dim=-1,
@@ -3268,7 +3277,9 @@ class HumanoidAeMcpPnn7(VecTask):
             train_yes=False,
         )
 
-        xyz_edit = self.input_lats[..., :3]
+        self.xyz_edit = self.input_lats[..., :3] * 1
+        # self.xyz_edit[..., 1:] = 0
+        # print(xyz_edit)
         rpy_edit = self.input_lats[..., 3:6] * torch.pi
         latent_edit = self.input_lats[..., 6:]
 
@@ -3277,10 +3288,10 @@ class HumanoidAeMcpPnn7(VecTask):
         edited_ys = raw_ys * 1
         # change the root xy based on action
         # TODO maybe instead of doing this, it would be good to condition on root xy as well. not exactly but some form of it.
-        edited_ys[..., :2] += xyz_edit[..., :2]
+        edited_ys[..., :2] += self.xyz_edit[..., :2] * 1
         edited_rotmat = sixd_to_rotmat(edited_ys[..., 3:9])
         yaw_edit = rpy_edit[..., -1] * 1
-        edit_rot = Rotation.from_euler("z", yaw_edit)
+        edit_rot = Rotation.from_euler("Z", yaw_edit)
         edited_rot = edit_rot * Rotation.from_matrix(edited_rotmat)
 
         z = 0 * input_lats_importance * latent_edit + input_my_lats_importance * mu
@@ -3317,9 +3328,9 @@ class HumanoidAeMcpPnn7(VecTask):
         # Note that we only need to add back yaw because pitch and roll are taken into account by the decoder
         # edited_rotmat = sixd_to_rotmat(edited_ys[..., 3:9])
         # edited_rot = Rotation.from_matrix(edited_rotmat)
-        edited_yaw = edited_rot.as_euler("zyx")[..., 0]
+        edited_yaw = edited_rot.as_euler("ZYX")[..., 0]
         good_rotmat = torch.as_tensor(
-            Rotation.from_euler("z", edited_yaw).as_matrix(),
+            Rotation.from_euler("Z", edited_yaw).as_matrix(),
             dtype=torch.float,
             device=self.device,
         )
@@ -3367,7 +3378,7 @@ class HumanoidAeMcpPnn7(VecTask):
             )[:, 1, ...].clone()
 
         self.prev_red_rb_root_xyz = self.red_rb_root_xyz.clone()
-        self.red_rb_root_xyz = edited_ys[..., :3]
+        self.red_rb_root_xyz = cvae_decoded_with_yaw[..., 0, :3]  # edited_ys[..., :3]
         self.red_rb_xyz = self.ref_body_pos.reshape(self.num_envs * num_agents, -1)
         self.ref_body_pos = self.ref_body_pos.reshape(self.num_envs, -1, 3)
         self.modified_ref_body_pos = self.ref_body_pos.clone()
@@ -3641,10 +3652,6 @@ class HumanoidAeMcpPnn7(VecTask):
         self._refresh_sim_tensors()
         # self._compute_reward(self.actions)  # ZL swapped order of reward & objecation computes. should be fine.
         self.rew_buf = self.rew_hist.mean(-1)
-        self._compute_reset()
-        self._compute_reward(
-            self.input_lats
-        )  # ZL swapped order of reward & objecation computes. should be fine.
         self._compute_observations(
             self._rigid_body_pos.reshape(
                 self.num_envs * num_agents, self.num_bodies, 3
@@ -3665,6 +3672,10 @@ class HumanoidAeMcpPnn7(VecTask):
                 self._rigid_body_ang_vel.shape[-1],
             ),
         )  # observation for the next step.
+        self._compute_reward(
+            self.input_lats
+        )  # ZL swapped order of reward & objecation computes. should be fine.
+        self._compute_reset()
 
         self.extras["terminate"] = self._terminate_buf
         self.extras["reward_raw"] = self.reward_raw.detach()
@@ -4036,7 +4047,7 @@ def compute_humanoid_observations_max(
     return obs
 
 
-# @torch.jit.script
+@torch.jit.script
 def compute_humanoid_reward(
     blue_obs,
     red_obs,
@@ -4049,18 +4060,30 @@ def compute_humanoid_reward(
     red_root_sixd,
 ):
     # type: (  Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tensor
-    root_velocity = (prev_red_rb_root_xyz - red_rb_root_xyz) / 0.01666666666
-    mse_velocity_loss = torch.nn.functional.mse_loss(
-        root_velocity,
-        torch.tensor([[1, 0, 0]], device=root_velocity.device).repeat(
-            root_velocity.shape[0], 1
-        ),
-    )
-    velocity_loss_result = torch.mean(mse_velocity_loss, dim=-1)
-    velocity_reward = torch.exp(-1 * velocity_loss_result)
+    root_velocity = (red_rb_root_xyz - prev_red_rb_root_xyz) / 0.01666666666
+    target_x_velocity = torch.tensor([[1.0, 0.0, 0.0]], device=blue_obs.device)
+    velocity_norm = torch.linalg.norm(root_velocity - target_x_velocity, dim=-1)
+    velocity_reward = torch.clip((60 - velocity_norm) / 60, 0, 1)
+    # target_x_action = torch.tensor([[0.01666666666, 0.0, 0.0]], device=blue_obs.device)
+    # action_norm = torch.linalg.norm(xyz_edit - target_x_action, dim=-1)
+    # action_reward = torch.clip((1 - action_norm) / 1, 0, 1)
+    # velocity_reward = torch.exp(-1* (1e-3) * velocity_norm)
 
-    delta_xyz = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
-    delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
+    # velocity_reward = torch.clip((60 - velocity_norm) / 60, 0, 1)
+
+    # # print(root_velocity)
+    # mse_velocity_loss = torch.nn.functional.mse_loss(
+    #     root_velocity,
+    #     torch.tensor([[1, 0, 0]], device=root_velocity.device).repeat(
+    #         root_velocity.shape[0], 1
+    #     ),
+    #     reduction="none",
+    # )
+    # velocity_loss_result = torch.mean(mse_velocity_loss, dim=-1)
+    # velocity_reward = torch.exp(-1 * velocity_loss_result)
+
+    # delta_xyz = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
+    # delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
     target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_obs.device)
     cossim_x = torch.cosine_similarity(red_root_sixd[..., :3], target_x_axis, dim=-1)
     # delta_sixd = torch.cosine_similarity(red_root_sixd[..., :3], target_x_axis, dim=-1)
@@ -4068,11 +4091,11 @@ def compute_humanoid_reward(
     # reward = 0 * 1e0 * torch.exp(-(delta_xyz_mean_norm**2)) + 1e0 * torch.exp(
     #     -(cossim_x**2)
     # )
-    reward = cossim_x
-    return velocity_reward
+    reward = velocity_reward + cossim_x
+    return reward
 
 
-# @torch.jit.script
+@torch.jit.script
 def compute_humanoid_reset(
     reset_buf,
     progress_buf,
@@ -4088,23 +4111,23 @@ def compute_humanoid_reset(
     terminated = torch.zeros_like(reset_buf)
     # enable_early_termination
     if enable_early_termination:
-        # delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
-        # delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
-        # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
-        # cossim_x = torch.cosine_similarity(
-        #     red_root_sixd[..., :3], target_x_axis, dim=-1
-        # )
+        delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
+        delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
+        target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
+        cossim_x = torch.cosine_similarity(
+            red_root_sixd[..., :3], target_x_axis, dim=-1
+        )
 
         delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
         delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
 
         velocity = red_rb_root_xyz - prev_red_rb_root_xyz
-        target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
-        cossim_x = torch.cosine_similarity(velocity, target_x_axis, dim=-1)
-
+        # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
+        velocity_cossim_x = torch.cosine_similarity(velocity, target_x_axis, dim=-1)
+        test = torch.ones_like(velocity_cossim_x)
         # terminated = delta_mean_norm > 5e-1
-        terminated = cossim_x < 0
-        terminated *= progress_buf > 1
+        terminated = test < 0
+        terminated *= progress_buf > 15
 
     reset = torch.where(
         progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated

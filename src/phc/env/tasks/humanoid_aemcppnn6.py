@@ -436,14 +436,18 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _build_proj(self, env_id, env_ptr, pos_add):
         pos = [
-            [-0.01, 0.0, 0.0],
+            # [-0.01, 0.0, 0.0],
+            [2.5, 0.3051, 0.0]
             # [ 0.0890016, -0.40830246, 0.25]
         ]
         for i, obj in enumerate(PERTURB_OBJS):
             default_pose = gymapi.Transform()
             torch.manual_seed(int(time.time()))
-            default_pose.p.x = pos[i][0] + torch.rand(1) * 1.2 + pos_add
-            default_pose.p.y = pos[i][1] + torch.rand(1) * 1.2
+            # default_pose.p.x = pos[i][0] + torch.rand(1) * 1.2 + pos_add
+            # default_pose.p.y = pos[i][1] + torch.rand(1) * 1.2
+            # default_pose.p.z = pos[i][2]
+            default_pose.p.x = pos[i][0]
+            default_pose.p.y = pos[i][1]
             default_pose.p.z = pos[i][2]
             obj_type = obj[0]
             if obj_type == "small":
@@ -2373,8 +2377,6 @@ class HumanoidAeMcpPnn6(VecTask):
         # NOTE: the compute reward is called after calculate observation, so the self.blue_obs and self.red_obs are valid
 
         self.rew_buf[:] = compute_humanoid_reward(
-            self.blue_obs,
-            self.red_obs,
             self.blue_rb_root_xyz.reshape(self.num_envs, -1),
             self.red_rb_root_xyz.reshape(self.num_envs, -1),
             self.blue_joint_angles.reshape(self.num_envs, -1),
@@ -2382,6 +2384,8 @@ class HumanoidAeMcpPnn6(VecTask):
             self.blue_rb_xyz.reshape(self.num_envs, -1),
             self.red_rb_xyz.reshape(self.num_envs, -1),
             self.ref_body_root_rot.reshape(self.num_envs, -1),
+            self.blue_rb_root_rot_sixd,
+            self._box_pos.reshape(self.num_envs, -1),
         )
         self.rew_buf[:] = self.rew_buf[:] * (1.0 - self._terminate_buf)
         return
@@ -3286,6 +3290,7 @@ class HumanoidAeMcpPnn6(VecTask):
         edited_ys = raw_ys * 1
         # change the root xy based on action
         # TODO maybe instead of doing this, it would be good to condition on root xy as well. not exactly but some form of it.
+        # print(self.xyz_edit[..., :2])
         edited_ys[..., :2] += self.xyz_edit[..., :2] * 1
         edited_rotmat = sixd_to_rotmat(edited_ys[..., 3:9])
         yaw_edit = rpy_edit[..., -1] * 1
@@ -4045,10 +4050,8 @@ def compute_humanoid_observations_max(
     return obs
 
 
-@torch.jit.script
+# @torch.jit.script
 def compute_humanoid_reward(
-    blue_obs,
-    red_obs,
     blue_rb_root_xyz,
     red_rb_root_xyz,
     blue_joint_angles,
@@ -4056,13 +4059,41 @@ def compute_humanoid_reward(
     blue_rb_xyz,
     red_rb_xyz,
     red_root_sixd,
+    blue_root_sixd,
+    box_pos,
 ):
     # type: (  Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -> Tensor
-    root_velocity = (red_rb_root_xyz - prev_red_rb_root_xyz) / 0.01666666666
-    target_x_velocity = torch.tensor([[1.0, 0.0, 0.0]], device=blue_obs.device)
-    velocity_norm = torch.linalg.norm(root_velocity - target_x_velocity, dim=-1)
-    velocity_reward = torch.clip((60 - velocity_norm) / 60, 0, 1)
-    # target_x_action = torch.tensor([[0.01666666666, 0.0, 0.0]], device=blue_obs.device)
+    # # root_velocity = (red_rb_root_xyz - prev_red_rb_root_xyz) / 0.01666666666
+    # # target_x_velocity = torch.tensor([[1.0, 0.0, 0.0]], device=red_rb_root_xyz.device)
+    # # velocity_norm = torch.linalg.norm(root_velocity - target_x_velocity, dim=-1)
+    # # velocity_reward = torch.clip((60 - velocity_norm) / 60, 0, 1)
+
+    box_distance_mse_loss = torch.nn.functional.mse_loss(
+        box_pos[..., :2], red_rb_root_xyz[..., :2], reduction="none"
+    )
+
+    box_distance_loss_result = torch.mean(box_distance_mse_loss, dim=1)
+
+    k1 = 0.8
+    box_distance_reward = 1 - torch.exp(-1 * (10**k1) * box_distance_loss_result)
+
+    # root_imitation_mse_loss = torch.nn.functional.mse_loss(
+    #     blue_rb_root_xyz[..., :2], red_rb_root_xyz[..., :2], reduction="none"
+    # )
+
+    # root_imitation_loss_result = torch.mean(root_imitation_mse_loss, dim=1)
+    # # print(root_imitation_loss_result)
+    # k2 = 0
+    # root_imitation_reward = torch.exp(-1 * (10**k2) * root_imitation_loss_result)
+
+    # root_distance = (blue_rb_root_xyz[..., :2] - red_rb_root_xyz[:2])
+    # target_x_action = torch.tensor([[0.0, 0.0]], device=blue_rb_root_xyz.device)
+    distance_norm = torch.linalg.norm(
+        red_rb_root_xyz[..., :2] - blue_rb_root_xyz[..., :2], dim=-1
+    )
+    distance_reward = torch.exp(-1 * (distance_norm**2))
+    # distance_reward = torch.clip((1 - distance_norm) / 1, 0, 1)
+
     # action_norm = torch.linalg.norm(xyz_edit - target_x_action, dim=-1)
     # action_reward = torch.clip((1 - action_norm) / 1, 0, 1)
     # velocity_reward = torch.exp(-1* (1e-3) * velocity_norm)
@@ -4082,14 +4113,29 @@ def compute_humanoid_reward(
 
     # delta_xyz = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
     # delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
-    target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_obs.device)
-    cossim_x = torch.cosine_similarity(red_root_sixd[..., :3], target_x_axis, dim=-1)
+    # # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=red_rb_root_xyz.device)
+    # # cossim_x = torch.cosine_similarity(red_root_sixd[..., :3], target_x_axis, dim=-1)
     # delta_sixd = torch.cosine_similarity(red_root_sixd[..., :3], target_x_axis, dim=-1)
     # delta_sixd_norm = torch.norm(delta_sixd, dim=-1)
     # reward = 0 * 1e0 * torch.exp(-(delta_xyz_mean_norm**2)) + 1e0 * torch.exp(
     #     -(cossim_x**2)
     # )
-    reward = velocity_reward + cossim_x
+    k3 = 0.5
+    delta_continuity = red_rb_root_xyz - prev_red_rb_root_xyz
+    delta_continuity_mean_norm = torch.norm(delta_continuity, dim=-1)
+    delta_continuity_reward = 1e0 * torch.exp(
+        -1 * (10**k3) * (delta_continuity_mean_norm**2)
+    )
+    # print(delta_continuity_reward)
+    # delta_xyz = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
+    # delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
+
+    reward = (
+        box_distance_reward
+        + distance_reward
+        # + 1e0 * torch.exp(-(delta_xyz_mean_norm**2))
+        + delta_continuity_reward
+    )
     return reward
 
 
@@ -4118,14 +4164,14 @@ def compute_humanoid_reset(
 
         delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
         delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
-
+        # print(delta_mean_norm)
         velocity = red_rb_root_xyz - prev_red_rb_root_xyz
         # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
         velocity_cossim_x = torch.cosine_similarity(velocity, target_x_axis, dim=-1)
         test = torch.ones_like(velocity_cossim_x)
         # terminated = delta_mean_norm > 5e-1
-        terminated = test < 0
-        terminated *= progress_buf > 15
+        terminated = delta_mean_norm > 1
+        terminated *= progress_buf > 2
 
     reset = torch.where(
         progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
