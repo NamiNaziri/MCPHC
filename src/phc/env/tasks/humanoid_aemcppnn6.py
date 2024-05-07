@@ -4050,7 +4050,7 @@ def compute_humanoid_observations_max(
     return obs
 
 
-# @torch.jit.script
+@torch.jit.script
 def compute_humanoid_reward(
     blue_rb_root_xyz,
     red_rb_root_xyz,
@@ -4120,7 +4120,7 @@ def compute_humanoid_reward(
     # reward = 0 * 1e0 * torch.exp(-(delta_xyz_mean_norm**2)) + 1e0 * torch.exp(
     #     -(cossim_x**2)
     # )
-    k3 = 0.5
+    k3 = 1
     delta_continuity = red_rb_root_xyz - prev_red_rb_root_xyz
     delta_continuity_mean_norm = torch.norm(delta_continuity, dim=-1)
     delta_continuity_reward = 1e0 * torch.exp(
