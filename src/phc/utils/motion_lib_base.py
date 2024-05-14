@@ -298,7 +298,7 @@ class MotionLibBase:
                 torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions
             ).to(self._device)
         # sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
-        sample_idxes = torch.full((num_motion_to_load,), 10663)  # TODO
+        sample_idxes = torch.full((num_motion_to_load,), 0)  # TODO
 
         # import ipdb; ipdb.set_trace()
         self._curr_motion_ids = sample_idxes

@@ -1431,7 +1431,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self._refresh_sim_tensors()
             # self._rigid_body_state[env_ids] = self._initial_rigid_body_state[env_ids]
 
-            self.gym.simulate(self.sim)
+            #self.gym.simulate(self.sim)
 
             # self._reset_actors(env_ids)  # this funciton calle _set_env_state, and should set all state vectors
             self._reset_env_tensors(env_ids)
@@ -2483,7 +2483,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
         if env_ids is None:
 
-            new_obs = obs.clone().reshape(self.num_envs, -1)
+            #new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[:] = torch.cat([new_obs[...,358:]], dim=-1)
 
             self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs], dim=-1).reshape(
@@ -2491,7 +2491,7 @@ class HumanoidAeMcpPnn6(VecTask):
             )
             # self.obs_buf = self.obs_buf
         else:
-            new_obs = obs.clone().reshape(self.num_envs, -1)
+            #new_obs = obs.clone().reshape(self.num_envs, -1)
             # self.obs_buf[env_ids] = torch.cat([new_obs[...,358:]], dim=-1)
             # TODO fix this to use env ids
             self.obs_buf[:] = torch.cat([self.blue_obs, self.red_obs], dim=-1).reshape(
@@ -2499,7 +2499,7 @@ class HumanoidAeMcpPnn6(VecTask):
             )
         # print(self.obs_buf)
         # NOTE this should be obs if we use it with phc
-        return new_obs
+        return self.obs_buf
 
     # TODO: fix the function to use env_ids
     def _compute_humanoid_obs(
@@ -3842,60 +3842,60 @@ class HumanoidAeMcpPnn6(VecTask):
                 ),
             )
 
-            g = compute_imitation_observations_v7(
-               self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., :3],
-                self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., 3:7],
-                self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
-                self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
-                self.modified_ref_body_pos, # TODO: this should be changed to use agent
-                self.ref_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,3),
-                1,
-                True
-            )
+            # g = compute_imitation_observations_v7(
+            #    self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., :3],
+            #     self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., 3:7],
+            #     self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
+            #     self._rigid_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,self._rigid_body_vel.shape[-1]),
+            #     self.modified_ref_body_pos, # TODO: this should be changed to use agent
+            #     self.ref_body_vel.reshape(self.num_envs*num_agents, self.num_bodies,3),
+            #     1,
+            #     True
+            # )
 
-            obs = obs[..., :358]
-            # # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
-            # # Also, the self.running_mean has to be repeated. we can do this, where it is assigned for the first time (after it is being read from pnn)
+            # obs = obs[..., :358]
+            # # # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
+            # # # Also, the self.running_mean has to be repeated. we can do this, where it is assigned for the first time (after it is being read from pnn)
 
-            nail = torch.cat([obs, g], dim=-1)
-            nail = (nail - self.running_mean[None].float()) / torch.sqrt(
-                self.running_var[None].float() + 1e-05
-            )
-            nail = torch.clamp(nail, min=-5.0, max=5.0)
-            _, x_all = self.pnn(nail)
-            x_all = torch.stack(x_all, dim=1)
-            # x_all = x_all.view(-1,x_all.shape[-2],x_all.shape[-1])
-            # Compute the MCP policy's actions
-            input_dict = {
-                "is_train": False,
-                "prev_actions": None,
-                "obs": nail,  # .view(-1,nail.shape[-1]),
-                "rnn_states": None,
-            }
-            with torch.no_grad():
-                weights, _, _, _ = self.mcp(input_dict)
-            rescaled_weights = rescale_actions(
-                -1.0, 1.0, torch.clamp(weights, -1.0, 1.0)
-            )
-            # rescaled_weights = rescaled_weights.view(self.num_envs, num_agents, -1)
-            self.actions = torch.sum(rescaled_weights[:, :, None] * x_all, dim=1)
-            self.actions = self.actions.view(self.num_envs, -1)
+            # nail = torch.cat([obs, g], dim=-1)
+            # nail = (nail - self.running_mean[None].float()) / torch.sqrt(
+            #     self.running_var[None].float() + 1e-05
+            # )
+            # nail = torch.clamp(nail, min=-5.0, max=5.0)
+            # _, x_all = self.pnn(nail)
+            # x_all = torch.stack(x_all, dim=1)
+            # # x_all = x_all.view(-1,x_all.shape[-2],x_all.shape[-1])
+            # # Compute the MCP policy's actions
+            # input_dict = {
+            #     "is_train": False,
+            #     "prev_actions": None,
+            #     "obs": nail,  # .view(-1,nail.shape[-1]),
+            #     "rnn_states": None,
+            # }
+            # with torch.no_grad():
+            #     weights, _, _, _ = self.mcp(input_dict)
+            # rescaled_weights = rescale_actions(
+            #     -1.0, 1.0, torch.clamp(weights, -1.0, 1.0)
+            # )
+            # # rescaled_weights = rescaled_weights.view(self.num_envs, num_agents, -1)
+            # self.actions = torch.sum(rescaled_weights[:, :, None] * x_all, dim=1)
+            # self.actions = self.actions.view(self.num_envs, -1)
 
-            if self.smpl_humanoid:
-                if self.reduce_action:
-                    actions_full = torch.zeros(
-                        [self.actions.shape[0], self._dof_size]
-                    ).to(self.device)
-                    actions_full[:, self.action_idx] = self.actions
-                    pd_tar = self._action_to_pd_targets(actions_full)
+            # if self.smpl_humanoid:
+            #     if self.reduce_action:
+            #         actions_full = torch.zeros(
+            #             [self.actions.shape[0], self._dof_size]
+            #         ).to(self.device)
+            #         actions_full[:, self.action_idx] = self.actions
+            #         pd_tar = self._action_to_pd_targets(actions_full)
 
-                else:
-                    pd_tar = self._action_to_pd_targets(self.actions)
-            pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
-            self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
-            #self.render()
-            super().physics_step()
-            self._refresh_sim_tensors()
+            #     else:
+            #         pd_tar = self._action_to_pd_targets(self.actions)
+            # pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
+            # self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
+            self.render()
+            # super().physics_step()
+            # self._refresh_sim_tensors()
 
             # shifting reward history to the left and adding new reward to the end of the history list
             self.rew_hist[:, :-1] = self.rew_hist[:, 1:] * 1
@@ -4476,8 +4476,8 @@ def compute_humanoid_reward(
         #delta_xyz_mean_norm_reward 
         #action_reward
         delta_xyz_mean_norm_reward+
-        delta_head_xyz_mean_norm_reward
-        #delta_hand_xyz_mean_norm_reward
+        #delta_head_xyz_mean_norm_reward
+        delta_hand_xyz_mean_norm_reward
         #+ delta_head_xyz_mean_norm_reward
     )
     return reward

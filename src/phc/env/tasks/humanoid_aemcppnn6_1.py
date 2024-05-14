@@ -1835,7 +1835,7 @@ def compute_humanoid_reward(humanoid_root_states, sword_states, box_states, acti
     )
     return reward
 
-
+ 
 @torch.jit.script
 def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, contact_body_ids, rigid_body_pos, max_episode_length, enable_early_termination, termination_heights):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]

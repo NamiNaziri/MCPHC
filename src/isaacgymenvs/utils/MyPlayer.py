@@ -4,7 +4,7 @@ import time
 from mlexp_utils import my_logging
 from mlexp_utils.dirs import proj_dir
 from rl_games.algos_torch import players
-import pyvista as pv
+
 import torch
 import vispy
 from tqdm import tqdm
@@ -33,6 +33,9 @@ class MyPlayer(players.PpoPlayerContinuous):
         # self.logger = my_logging.get_logger(self.config["out_name"], log_dir)
         # self.logger.info("MyPlayer initialized")
         self.train_dir = self.env.cfg.get("train_dir", "runs")
+        if self.env.num_envs == 1:
+            import pyvista as pv
+        import pyvista as pv
 
         checkpoint_path = self.env.cfg["checkpoint"]
         parts = checkpoint_path.split("/")

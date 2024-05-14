@@ -1303,7 +1303,7 @@ class HumanoidAeMcpPnn6(VecTask):
             # return 3
         elif self.ae_type == "pvae":
             return (
-               19
+                19
             ) * num_agents  # root xyz edit + root rpy edit + latent space edit
         elif self.ae_type == "dof":
             return (
@@ -2400,8 +2400,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.rew_buf[:] = compute_humanoid_reward(
             # self._rigid_body_pos.reshape(self.num_envs, -1),
             # self.modified_rb_body_pos.reshape(self.num_envs, -1),
-            #self._rigid_body_pos.reshape(self.num_envs, -1),
-            self.modified_ref_body_pos.reshape(self.num_envs, -1),
+            self._rigid_body_pos.reshape(self.num_envs, -1),
             self.ref_rb_pos.reshape(self.num_envs, -1),
             self.in_rb_rot_sixd_inv.reshape(self.num_envs, -1),
             self.out_rb_rot_sixd_inv.reshape(self.num_envs, -1),
@@ -2415,31 +2414,31 @@ class HumanoidAeMcpPnn6(VecTask):
         return
 
     def _compute_reset(self):
-        # self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
-        # self.reset_buf, 
-        # self.progress_buf,
-        # self._contact_forces,
-        # self._contact_body_ids,
-        # self._rigid_body_pos.reshape(self.num_envs, num_agents * self.num_bodies, 3),
-        # self.motion_times,
-        # self._motion_lib._motion_lengths.unsqueeze(-1),
-        # self.max_episode_length, 
-        # self._enable_early_termination,
-        #   self._termination_heights)
-
         self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
-            self.reset_buf,
-            self.progress_buf,
-            self.blue_rb_xyz,
-            self.red_rb_xyz,
-            self.ref_body_root_rot,
-            self.red_rb_root_xyz,
-            self.prev_red_rb_root_xyz,
-            self.motion_times,
-            self._motion_lib._motion_lengths.unsqueeze(-1),
-            self.max_episode_length,
-            self._enable_early_termination,
-        )
+        self.reset_buf, 
+        self.progress_buf,
+        self._contact_forces,
+        self._contact_body_ids,
+        self._rigid_body_pos.reshape(self.num_envs, num_agents * self.num_bodies, 3),
+        self.motion_times,
+        self._motion_lib._motion_lengths.unsqueeze(-1),
+        self.max_episode_length, 
+        self._enable_early_termination,
+          self._termination_heights)
+
+        # self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
+        #     self.reset_buf,
+        #     self.progress_buf,
+        #     self.blue_rb_xyz,
+        #     self.red_rb_xyz,
+        #     self.ref_body_root_rot,
+        #     self.red_rb_root_xyz,
+        #     self.prev_red_rb_root_xyz,
+        #     self.motion_times,
+        #     self._motion_lib._motion_lengths.unsqueeze(-1),
+        #     self.max_episode_length,
+        #     self._enable_early_termination,
+        # )
         return
 
     def _refresh_sim_tensors(self):
@@ -2476,7 +2475,7 @@ class HumanoidAeMcpPnn6(VecTask):
             [
                 
                 self.red_rb_root_xyz,
-                self.red_rb_xyz,
+                self._rigid_body_pos.reshape(self.red_rb_xyz.shape),
             ],
             dim=-1,
         )
@@ -3143,13 +3142,12 @@ class HumanoidAeMcpPnn6(VecTask):
         self.obs_root_pos = self.modified_rb_body_pos.reshape(
             self.num_envs * num_agents, -1, 3
         ).clone()[:, 0, :]
-        self.visualized_ref_body_pos = self.modified_ref_body_pos_no_physics.clone()
-        self.visualized_rb_body_pos = self.modified_rb_body_pos.clone()
 
         if (
             self.num_envs <= 15
         ):  # visualized only when we have small num of environment (mostly used when we want to evaluate)
-
+            self.visualized_ref_body_pos = self.modified_ref_body_pos_no_physics.clone()
+            self.visualized_rb_body_pos = self.modified_rb_body_pos.clone()
 
             if self.num_envs == 1:
                 self.vid_visualized_rb_body_pos = self.visualized_rb_body_pos.clone()
@@ -3184,15 +3182,15 @@ class HumanoidAeMcpPnn6(VecTask):
                     self.vid_visualized_ref_body_pos.reshape(1, -1, 3)
                 )
 
-        self._marker_pos[:] = torch.cat(
-            [self.visualized_ref_body_pos, self.visualized_rb_body_pos], dim=1
-        )
-        self.gym.set_actor_root_state_tensor_indexed(
-            self.sim,
-            gymtorch.unwrap_tensor(self._root_states),
-            gymtorch.unwrap_tensor(self._marker_actor_ids),
-            len(self._marker_actor_ids),
-        )
+            self._marker_pos[:] = torch.cat(
+                [self.visualized_ref_body_pos, self.visualized_rb_body_pos], dim=1
+            )
+            self.gym.set_actor_root_state_tensor_indexed(
+                self.sim,
+                gymtorch.unwrap_tensor(self._root_states),
+                gymtorch.unwrap_tensor(self._marker_actor_ids),
+                len(self._marker_actor_ids),
+            )
 
         # NOTE: In Nam Hee's code this is set to zero
         # self.ref_body_vel = ref_body_vel #0.5 * (self._rigid_body_vel.reshape(-1,24,3) + ref_body_vel)
@@ -3821,6 +3819,8 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def physics_step(self):
         for i in range(self.hlc_control_freq_inv):
+            # self._rigid_body_pos.reshape(self.num_envs*num_agents, -1)
+            # self._rigid_body_pos.reshape(self.num_envs*num_agents, self.num_bodies,3),
             obs = self._compute_observations(
                 self._rigid_body_pos.reshape(
                     self.num_envs * num_agents, self.num_bodies, 3
@@ -3841,6 +3841,7 @@ class HumanoidAeMcpPnn6(VecTask):
                     self._rigid_body_ang_vel.shape[-1],
                 ),
             )
+            # #obs = obs.view(self.num_envs * num_agents, -1)
 
             g = compute_imitation_observations_v7(
                self._humanoid_root_states.reshape(self.num_envs*num_agents,-1)[..., :3],
@@ -3853,10 +3854,13 @@ class HumanoidAeMcpPnn6(VecTask):
                 True
             )
 
+            #
             obs = obs[..., :358]
             # # TODO: We need both character's obs and both characters g, the we will have (2,*) tensors
             # # Also, the self.running_mean has to be repeated. we can do this, where it is assigned for the first time (after it is being read from pnn)
 
+            # #obs = obs.repeat(2,1)
+            # #g = g.repeat(2,1)
             nail = torch.cat([obs, g], dim=-1)
             nail = (nail - self.running_mean[None].float()) / torch.sqrt(
                 self.running_var[None].float() + 1e-05
@@ -3891,11 +3895,24 @@ class HumanoidAeMcpPnn6(VecTask):
 
                 else:
                     pd_tar = self._action_to_pd_targets(self.actions)
+                    # TODO, do this for both agents
+                    # if self._freeze_hand:
+                    #    pd_tar[:, self._dof_names.index("L_Hand") * 3:(self._dof_names.index("L_Hand") * 3 + 3)] = 0
+                    #    pd_tar[:, self._dof_names.index("R_Hand") * 3:(self._dof_names.index("R_Hand") * 3 + 3)] = 0
+                    # if self._freeze_toe:
+                    #    pd_tar[:, self._dof_names.index("L_Toe") * 3:(self._dof_names.index("L_Toe") * 3 + 3)] = 0
+                    #    pd_tar[:, self._dof_names.index("R_Toe") * 3:(self._dof_names.index("R_Toe") * 3 + 3)] = 0
+                    # if self._remove_neck:
+                    #    pd_tar[:, self._dof_names.index("Neck") * 3:(self._dof_names.index("Neck") * 3 + 3)] = 0
+                    #   pd_tar[:, self._dof_names.index("Head") * 3:(self._dof_names.index("Head") * 3 + 3)] = 0
+
             pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
             self.gym.set_dof_position_target_tensor(self.sim, pd_tar_tensor)
-            #self.render()
+            # self.render()
             super().physics_step()
             self._refresh_sim_tensors()
+
+            # self.post_physics_step()
 
             # shifting reward history to the left and adding new reward to the end of the history list
             self.rew_hist[:, :-1] = self.rew_hist[:, 1:] * 1
@@ -4475,116 +4492,115 @@ def compute_humanoid_reward(
         # + delta_continuity_reward
         #delta_xyz_mean_norm_reward 
         #action_reward
-        delta_xyz_mean_norm_reward+
-        delta_head_xyz_mean_norm_reward
+        sixd_distance_reward
         #delta_hand_xyz_mean_norm_reward
         #+ delta_head_xyz_mean_norm_reward
     )
     return reward
 
 
-@torch.jit.script
-def compute_humanoid_reset(
-    reset_buf,
-    progress_buf,
-    blue_rb_xyz,
-    red_rb_xyz,
-    red_root_sixd,
-    red_rb_root_xyz,
-    prev_red_rb_root_xyz,
-    current_motion_times,
-    _motion_lengths,
-    max_episode_length,
-    enable_early_termination,
-):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor,Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
-    terminated = torch.zeros_like(reset_buf)
-    # enable_early_termination
-    if enable_early_termination:
-        delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
-        delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
-        target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
-        cossim_x = torch.cosine_similarity(
-            red_root_sixd[..., :3], target_x_axis, dim=-1
-        )
-
-        delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
-        delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
-        # print(delta_mean_norm)
-        velocity = red_rb_root_xyz - prev_red_rb_root_xyz
-        # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
-        velocity_cossim_x = torch.cosine_similarity(velocity, target_x_axis, dim=-1)
-        test = torch.ones_like(velocity_cossim_x)
-        # terminated = delta_mean_norm > 1
-        terminated = test > 1
-        animation_ended = current_motion_times > _motion_lengths
-        terminated |= animation_ended.squeeze(-1)
-
-        terminated *= progress_buf > 2
-
-    reset = torch.where(
-        progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
-    )
-    return reset, terminated
-
-# @torch.jit.script
+# # @torch.jit.script
 # def compute_humanoid_reset(
 #     reset_buf,
 #     progress_buf,
-#     contact_buf,
-#     contact_body_ids,
-#     rigid_body_pos,
+#     blue_rb_xyz,
+#     red_rb_xyz,
+#     red_root_sixd,
+#     red_rb_root_xyz,
+#     prev_red_rb_root_xyz,
 #     current_motion_times,
 #     _motion_lengths,
 #     max_episode_length,
 #     enable_early_termination,
-#     termination_heights,
 # ):
-#     # type: (Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]
-#     # ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+#     # type: (Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor,Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
 #     terminated = torch.zeros_like(reset_buf)
 #     # enable_early_termination
 #     if enable_early_termination:
+#         delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
+#         delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
+#         target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
+#         cossim_x = torch.cosine_similarity(
+#             red_root_sixd[..., :3], target_x_axis, dim=-1
+#         )
 
-#         masked_contact_buf = contact_buf.clone()
-#         masked_contact_buf[:, contact_body_ids, :] = 0
-#         fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
-#         # print(torch.any(torch.abs(masked_contact_buf) > 500, dim=-1))
-#         fall_contact = torch.any(fall_contact, dim=-1)
-#         # if fall_contact.any():
-#         # print(masked_contact_buf[0, :, 0].nonzero())
-#         #     import ipdb
-#         #     ipdb.set_trace()
-
-#         body_height = rigid_body_pos[..., 2]
-#         fall_height = body_height < termination_heights
-#         fall_height[:, contact_body_ids] = False
-#         fall_height = torch.any(fall_height, dim=-1)
-
-#         ############################## Debug ##############################
-#         # mujoco_joint_names = np.array(['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']);  print( mujoco_joint_names[masked_contact_buf[0, :, 0].nonzero().cpu().numpy()])
-#         ############################## Debug ##############################
-
-#         has_fallen = torch.logical_and(fall_contact, fall_height)
-
-#         # terminate when contact happens
-#         # has_fallen = torch.logical_or(fall_contact, fall_height)
-
-#         # first timestep can sometimes still have nonzero contact forces
-#         # so only check after first couple of steps
-#         has_fallen *= progress_buf > 1
-#         terminated = torch.where(has_fallen, torch.ones_like(reset_buf), terminated)
+#         delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
+#         delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
+#         # print(delta_mean_norm)
+#         velocity = red_rb_root_xyz - prev_red_rb_root_xyz
+#         # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
+#         velocity_cossim_x = torch.cosine_similarity(velocity, target_x_axis, dim=-1)
+#         test = torch.ones_like(velocity_cossim_x)
+#         # terminated = delta_mean_norm > 1
+#         terminated = test > 1
 #         animation_ended = current_motion_times > _motion_lengths
 #         terminated |= animation_ended.squeeze(-1)
 
+#         terminated *= progress_buf > 2
 
 #     reset = torch.where(
 #         progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
 #     )
-#     # import ipdb
-#     # ipdb.set_trace()
-
 #     return reset, terminated
+
+#@torch.jit.script
+def compute_humanoid_reset(
+    reset_buf,
+    progress_buf,
+    contact_buf,
+    contact_body_ids,
+    rigid_body_pos,
+    current_motion_times,
+    _motion_lengths,
+    max_episode_length,
+    enable_early_termination,
+    termination_heights,
+):
+    # type: (Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor, float, bool, Tensor) -> Tuple[Tensor, Tensor]
+    # ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+    terminated = torch.zeros_like(reset_buf)
+    # enable_early_termination
+    if enable_early_termination:
+
+        masked_contact_buf = contact_buf.clone()
+        masked_contact_buf[:, contact_body_ids, :] = 0
+        fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
+        # print(torch.any(torch.abs(masked_contact_buf) > 500, dim=-1))
+        fall_contact = torch.any(fall_contact, dim=-1)
+        # if fall_contact.any():
+        # print(masked_contact_buf[0, :, 0].nonzero())
+        #     import ipdb
+        #     ipdb.set_trace()
+
+        body_height = rigid_body_pos[..., 2]
+        fall_height = body_height < termination_heights
+        fall_height[:, contact_body_ids] = False
+        fall_height = torch.any(fall_height, dim=-1)
+
+        ############################## Debug ##############################
+        # mujoco_joint_names = np.array(['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']);  print( mujoco_joint_names[masked_contact_buf[0, :, 0].nonzero().cpu().numpy()])
+        ############################## Debug ##############################
+
+        has_fallen = torch.logical_and(fall_contact, fall_height)
+
+        # terminate when contact happens
+        # has_fallen = torch.logical_or(fall_contact, fall_height)
+
+        # first timestep can sometimes still have nonzero contact forces
+        # so only check after first couple of steps
+        has_fallen *= progress_buf > 1
+        terminated = torch.where(has_fallen, torch.ones_like(reset_buf), terminated)
+        animation_ended = current_motion_times > _motion_lengths
+        terminated |= animation_ended.squeeze(-1)
+
+
+    reset = torch.where(
+        progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
+    )
+    # import ipdb
+    # ipdb.set_trace()
+
+    return reset, terminated
 
 
 #####################################################################

@@ -12,7 +12,7 @@ env:
   isFlagrun: False
   enableDebugVis: False
 
-  ae_type: "cvae"  #Can be {ae, vae, cvae, none}
+  ae_type: "pvae"  #Can be {ae, vae, cvae, none}
   actor_init_pos: "static" # Can be {static, random, back_to_back}
   root_motion: True
 
