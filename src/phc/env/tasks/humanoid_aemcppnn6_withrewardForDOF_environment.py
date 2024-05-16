@@ -4475,8 +4475,8 @@ def compute_humanoid_reward(
         # + delta_xyz_mean_norm_reward
         # # + 1e0 * torch.exp(-(delta_xyz_mean_norm**2))
         # + delta_continuity_reward
-        delta_xyz_mean_norm_reward +
-        delta_head_xyz_mean_norm_reward
+        delta_xyz_mean_norm_reward 
+        #delta_head_xyz_mean_norm_reward
     )
     return reward
 

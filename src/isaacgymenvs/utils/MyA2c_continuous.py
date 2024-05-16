@@ -22,6 +22,12 @@ from torch import nn
 
 from tensorboardX import SummaryWriter
 
+def MSE_distance(first, second):
+    loss = torch.nn.functional.mse_loss(
+                first[..., :2], second[..., :2], reduction="none"
+            )
+
+    return torch.mean(loss, dim=1)
 
 class MyA2c_continuous(a2c_continuous.A2CAgent):
     def __init__(self, base_name, config):
@@ -197,6 +203,37 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
                 torch.mean(self.model.a2c_network.sigma.data),
                 frame,
             )
+
+            # my_env = self.vec_env.env
+
+            # green_rb_pos = my_env._rigid_body_pos.reshape(my_env.num_envs, -1)
+            # red_rb_pos = my_env.modified_ref_body_pos.reshape(my_env.num_envs, -1)
+            # blue_rb_pos = my_env.modified_rb_body_pos.reshape(my_env.num_envs, -1)
+            # box_pos = my_env._box_pos.reshape(my_env.num_envs, -1)
+            
+
+            # self.writer.add_scalar(
+            #     "custom/box_to_blue",
+            #     MSE_distance(box_pos,blue_rb_pos).mean(),
+            #     epoch_num,
+            # )
+
+            # self.writer.add_scalar(
+            #     "custom/box_to_red",
+            #     MSE_distance(box_pos,red_rb_pos).mean(),
+            #     epoch_num,
+            # )
+
+            # self.writer.add_scalar(
+            #     "custom/box_to_green",
+            #     MSE_distance(box_pos,green_rb_pos).mean(),
+            #     epoch_num,
+            # )
+
+            
+
+
+
 
             # cleaning memory to optimize space
             self.dataset.update_values_dict(None)
