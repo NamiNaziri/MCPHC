@@ -32,7 +32,7 @@ if __name__ == "__main__":
     # Call the function to copy the directory
     copy_directory(source_directory, destination_directory)
 
-    triton_command = ['sbatch',f'--output={args.experiment}.out',f'--job-name={args.experiment}', 'new_run.sh', ]
+    triton_command = ['sbatch',f'--output=out/{args.experiment}.out',f'--job-name={args.experiment}', 'new_run.sh', ]
     triton_command.append(args.experiment)
     triton_sub = subprocess.Popen(  triton_command)
     triton_sub.wait()

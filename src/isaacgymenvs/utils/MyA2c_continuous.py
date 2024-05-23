@@ -284,9 +284,10 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
                     )
 
                 if self.game_rewards.current_size > 0:
-                    mean_rewards = self.game_rewards.get_mean()
 
                     mean_lengths = self.game_lengths.get_mean()
+
+                    mean_rewards = self.game_rewards.get_mean()
                     self.mean_rewards = mean_rewards[0]
 
                     for i in range(self.value_size):

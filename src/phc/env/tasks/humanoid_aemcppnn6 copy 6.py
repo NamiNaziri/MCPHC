@@ -1314,7 +1314,7 @@ class HumanoidAeMcpPnn6(VecTask):
             ) * num_agents  # root xyz edit + root rpy edit + latent space edit
         elif self.ae_type == "dof":
             return (
-                69 + 2 #dof + root_xy
+                69 + 2  #dof + root_xy
             ) * num_agents
         else:
             return 10 * num_agents
@@ -2487,6 +2487,9 @@ class HumanoidAeMcpPnn6(VecTask):
         #         ,self.blue_rb_root_ang_vel, self.blue_sixd, self.blue_joint_ang_vel], dim=-1)
         # self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
         #                         self.red_rb_root_ang_vel, self.red_sixd, self.red_joint_ang_vel], dim=-1)
+        if(self.ae_type == 'pvae'):
+            self.blue_obs = torch.cat([ self.blue_sixd, self.blue_latent], dim=-1)
+            self.red_obs = torch.cat([self.red_sixd, self.red_latent],dim=-1,)
         #else:
         self.blue_obs = torch.cat([ self.blue_rb_xyz], dim=-1)
         #self.red_obs = torch.cat([self.red_rb_xyz,],dim=-1,)
@@ -3729,17 +3732,95 @@ class HumanoidAeMcpPnn6(VecTask):
                 motion_res["body_vel"],
                 motion_res["body_ang_vel"],
             )
+        # dof_pos = motion_res["dof_pos"]
+        # rb_pos = motion_res["rg_pos"]
+        # self._humanoid_root_states[...,:3] = rb_pos[:,[0]]
 
+        # env_ids = torch.arange(0, self.num_envs, device=self.device, dtype=torch.int32)
+        # env_ids_int32 = self._humanoid_actor_ids[env_ids]
+        # new_env_ids_int32 = torch.cat(
+        #     [
+        #         torch.arange(
+        #             start, start + num_agents, device=self.device, dtype=torch.int32
+        #         )
+        #         for start in env_ids_int32
+        #     ]
+        # )
+        # self._humanoid_root_states[env_ids, ..., 3:7] = root_rot.reshape(
+        #     len(env_ids), num_agents, -1
+        # )
+        # self._humanoid_root_states[env_ids, ..., 7:10] = root_vel.reshape(
+        #     len(env_ids), num_agents, -1
+        # )
+        # self._humanoid_root_states[env_ids, ..., 10:13] = root_ang_vel.reshape(
+        #     len(env_ids), num_agents, -1
+        # )
+        # self._dof_pos[env_ids] = dof_pos.reshape(len(env_ids), num_agents, -1)
+        # self._dof_pos += self.input_lats[:,None,:]
+        # #self._dof_vel[env_ids] = dof_vel.reshape(len(env_ids), num_agents, -1)
+
+        # rigid_body_pos=rb_pos
+        # rigid_body_rot=ref_rb_rot
+        # rigid_body_vel=ref_body_vel
+        # rigid_body_ang_vel=ref_body_ang_vel
+
+        # if (not rigid_body_pos is None) and (not rigid_body_rot is None):
+        #     self._rigid_body_pos[env_ids] = rigid_body_pos.reshape(
+        #         len(env_ids), num_agents, 24, -1
+        #     )
+        #     self._rigid_body_rot[env_ids] = rigid_body_rot.reshape(
+        #         len(env_ids), num_agents, 24, -1
+        #     )
+        #     self._rigid_body_vel[env_ids] = rigid_body_vel.reshape(
+        #         len(env_ids), num_agents, 24, -1
+        #     )
+        #     self._rigid_body_ang_vel[env_ids] = rigid_body_ang_vel.reshape(
+        #         len(env_ids), num_agents, 24, -1
+        #     )
+        # self.gym.set_actor_root_state_tensor_indexed(
+        #     self.sim,
+        #     gymtorch.unwrap_tensor(self._root_states),
+        #     gymtorch.unwrap_tensor(new_env_ids_int32),
+        #     len(new_env_ids_int32),
+        # )
+        # self.gym.set_dof_state_tensor_indexed(
+        #     self.sim,
+        #     gymtorch.unwrap_tensor(self._dof_state),
+        #     gymtorch.unwrap_tensor(new_env_ids_int32),
+        #     len(new_env_ids_int32),
+        # )
+
+
+        '''
+        # self.gym.simulate(self.sim)
+        rotation_euler = Rotation.from_quat(motion_res["rb_rot"].reshape(-1, 4)).as_euler('zyx').reshape(self.num_envs, -1)
+        modified_rotation_euler = 1 * self.input_lats + torch.tensor(rotation_euler, device=self.device) 
+        modified_rotation_quat = Rotation.from_euler('zyx', modified_rotation_euler.reshape(-1, 3)).as_quat()
+
+        modified_rotation_quat = modified_rotation_quat.reshape(-1,24,4)
+        modified_rotation_quat =  torch.as_tensor(modified_rotation_quat, dtype=torch.float, device = self.device)
+
+
+        recon_sk_state = SkeletonState.from_rotation_and_root_translation(
+            self.sk_tree,
+            torch.as_tensor(modified_rotation_quat, dtype=torch.float),
+            torch.as_tensor(motion_res["root_pos"], dtype=torch.float),
+            is_local=False,
+        )
+
+        recon_global_pos = recon_sk_state.global_translation.reshape(-1,24,3)
+        recon_global_pos = recon_global_pos.to(self.device)
+        '''
         self.blue_rb_xyz = motion_res["rg_pos"].reshape(self.num_envs * num_agents, -1)
 
         dof_pos = motion_res["dof_pos"]
-        if(self.physics_enable):
-            current_root = self._rigid_body_pos.reshape(-1,24,3)[:,0]
-        elif not self.root_motion:
-            current_root = self.red_rb_root_xyz
+        # if(self.physics_enable):
+        #     current_root = self._rigid_body_pos.reshape(-1,24,3)[:,0]
+        # else:
+        current_root = self.red_rb_root_xyz
         #print(current_root)
-            changed_root = current_root * 1
-            changed_root[..., :2] += self.input_lats[...,69:] 
+        changed_root = current_root * 1
+        changed_root[..., :2] += self.input_lats[...,69:] 
 
         if(self.root_motion):
             changed_root = motion_res["root_pos"]
@@ -3749,9 +3830,9 @@ class HumanoidAeMcpPnn6(VecTask):
         # print(self.input_lats[0,:69])
         # print(self.input_lats.shape)
         # print(self.input_lats[0,:69].shape)
-        #self.blue_dof_pos = dof_pos * 1
+        self.blue_dof_pos = dof_pos * 1
         dof_pos += self.input_lats[...,:69]
-        #self.red_dof_pos = dof_pos * 1 
+        self.red_dof_pos = dof_pos * 1 
 
         pose_quat = Rotation.from_rotvec(dof_pos.reshape(-1, 3)).as_quat().reshape(-1, 23, 4)
         root_rot = motion_res["root_rot"]
@@ -3770,7 +3851,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
         #self.ref_body_pos = self.ref_rb_pos.reshape(self.num_envs, -1, 3).clone()
         self.modified_ref_body_pos = recon_global_pos.reshape(self.num_envs, -1, 3).clone()
-        self.red_rb_xyz = self.modified_ref_body_pos.reshape(self.num_envs, -1) * 1
+        self.red_rb_xyz = self.modified_ref_body_pos.reshape(self.num_envs, -1)
 
         self.modified_rb_body_pos = motion_res["rg_pos"].reshape(self.num_envs, -1, 3).clone()
 
@@ -4403,7 +4484,7 @@ def compute_humanoid_observations_max(
 def compute_humanoid_reward(
         self,
         _rigid_body_pos,
-        red_rb_pos,
+        red_rb_pox,
         modified_rb_body_pos,
         red_dof_pos,
         blue_dof_pos,
@@ -4446,40 +4527,27 @@ def compute_humanoid_reward(
     k1 = 1
     box_distance_reward = 1 - torch.exp(-1 * (10**k1) * box_distance_loss_result)
 
-    # self.writer.add_scalar(
-    #             "custom/box_distance_loss_result",
-    #             torch.mean(box_distance_loss_result),
-    #             self.step_count,
-    #         )
+    self.writer.add_scalar(
+                "custom/box_distance_loss_result",
+                torch.mean(box_distance_loss_result),
+                self.step_count,
+            )
 
-    # self.writer.add_scalar(
-    #             "custom/box_distance_reward",
-    #             torch.mean(box_distance_reward),
-    #             self.step_count,
-    #         )
+    self.writer.add_scalar(
+                "custom/box_distance_reward",
+                torch.mean(box_distance_reward),
+                self.step_count,
+            )
     #print(box_distance_reward[0])
     #print('----')
-    # k1 = 0.75
-    # box_distance_delta_xyz = (
-    #     box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
-    #     - red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2]
-    # )
-    # box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1)
-    # box_distance_min = torch.min(box_distance_norm, dim=-1)
-    # box_distance_min_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_min**2))
-
-    # self.writer.add_scalar(
-    #             "custom/box_distance_min",
-    #             torch.mean(box_distance_min),
-    #             self.step_count,
-    #         )
-
-    # self.writer.add_scalar(
-    #             "custom/box_distance_min_reward",
-    #             torch.mean(box_distance_min_reward),
-    #             self.step_count,
-    #         )
-
+    # # k1 = 0.75
+    # # box_distance_delta_xyz = (
+    # #     box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
+    # #     - red_rb_xyz.reshape(-1, 24, 3)[:, 1:, :2]
+    # # )
+    # # box_distance_mean_norm = torch.mean(
+    # #     torch.norm(box_distance_delta_xyz, dim=-1), dim=-1
+    # # )
     # # box_distance_mean_norm_reward = 1 - torch.exp(
     # #     -1 * (10**k1) * (box_distance_mean_norm**2)
     # # )
@@ -4534,7 +4602,7 @@ def compute_humanoid_reward(
     delta_head_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_head_xyz_mean_norm**2))
 
     
-    red_rb_pos_inv = red_rb_pos.reshape(-1, 24, 3) * 1
+    red_rb_pos_inv = red_rb_pox.reshape(-1, 24, 3) * 1
     red_rb_pos_inv -= red_rb_pos_inv[:, [0]]
     blue_rb_pos_inv = modified_rb_body_pos.reshape(-1, 24, 3) * 1
     blue_rb_pos_inv -= blue_rb_pos_inv[:,[0]]
@@ -4558,13 +4626,13 @@ def compute_humanoid_reward(
             )
 
     delta_xyz = (
-        red_rb_pos.reshape(-1, 24, 3)
+        red_rb_pox.reshape(-1, 24, 3)
         - modified_rb_body_pos.reshape(-1, 24, 3)
     )
     delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
     delta_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_xyz_mean_norm**2))
 
-    delta_root_xyz = (red_rb_pos.reshape(-1, 24, 3)[:,[0]]- modified_rb_body_pos.reshape(-1, 24, 3)[:,[0]])
+    delta_root_xyz = (red_rb_pox.reshape(-1, 24, 3)[:,[0]]- modified_rb_body_pos.reshape(-1, 24, 3)[:,[0]])
     delta_root_xyz_mean_norm = torch.mean(torch.norm(delta_root_xyz, dim=-1), dim=-1)
     #print(delta_root_xyz_mean_norm[0])
     delta_root_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_root_xyz_mean_norm**2))
@@ -4618,7 +4686,6 @@ def compute_humanoid_reward(
         #delta_xyz_mean_norm_reward
         1 * imitation_inv_reward
         + 1 * delta_root_xyz_mean_norm_reward
-        ####delta_xyz_mean_norm_reward
         #delta_hand_xyz_mean_norm_reward
         # + box_distance_reward
         # - (10 * box_pos[...,2])
@@ -4709,7 +4776,7 @@ def compute_humanoid_reset(
         
         
 
-        terminated = delta_mean_norm > 1
+        terminated |= delta_mean_norm > 1
         #terminated = test > 1
         animation_ended = current_motion_times > _motion_lengths
         #terminated |= animation_ended.squeeze(-1)

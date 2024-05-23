@@ -32,6 +32,8 @@ class MyPlayer(players.PpoPlayerContinuous):
         # )
         # self.logger = my_logging.get_logger(self.config["out_name"], log_dir)
         # self.logger.info("MyPlayer initialized")
+
+        
         self.train_dir = self.env.cfg.get("train_dir", "runs")
         if self.env.num_envs == 1:
             import pyvista as pv
@@ -52,6 +54,8 @@ class MyPlayer(players.PpoPlayerContinuous):
         print(self.summaries_dir)
 
         self.writer = SummaryWriter(self.summaries_dir)
+
+        self.env.writer = self.writer
 
         self.pl = pv.Plotter(off_screen=True, window_size=(608, 608))
         self.pl.enable_shadows()

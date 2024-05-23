@@ -289,14 +289,14 @@ class MotionLibBase:
         num_motion_to_load = len(skeleton_trees)
 
         print(self._num_unique_motions)
-        if random_sample:
-            sample_idxes = torch.multinomial(
-                self._sampling_prob, num_samples=num_motion_to_load, replacement=True
-            ).to(self._device)
-        else:
-            sample_idxes = torch.remainder(
-                torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions
-            ).to(self._device)
+        # if random_sample:
+        #     sample_idxes = torch.multinomial(
+        #         self._sampling_prob, num_samples=num_motion_to_load, replacement=True
+        #     ).to(self._device)
+        # else:
+        #     sample_idxes = torch.remainder(
+        #         torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions
+        #     ).to(self._device)
         # sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
         sample_idxes = torch.full((num_motion_to_load,), 0)  # TODO
 

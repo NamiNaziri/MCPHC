@@ -1314,7 +1314,7 @@ class HumanoidAeMcpPnn6(VecTask):
             ) * num_agents  # root xyz edit + root rpy edit + latent space edit
         elif self.ae_type == "dof":
             return (
-                69 + 2 #dof + root_xy
+                69  #dof + root_xy
             ) * num_agents
         else:
             return 10 * num_agents
@@ -4403,7 +4403,7 @@ def compute_humanoid_observations_max(
 def compute_humanoid_reward(
         self,
         _rigid_body_pos,
-        red_rb_pos,
+        red_rb_pox,
         modified_rb_body_pos,
         red_dof_pos,
         blue_dof_pos,
@@ -4446,40 +4446,27 @@ def compute_humanoid_reward(
     k1 = 1
     box_distance_reward = 1 - torch.exp(-1 * (10**k1) * box_distance_loss_result)
 
-    # self.writer.add_scalar(
-    #             "custom/box_distance_loss_result",
-    #             torch.mean(box_distance_loss_result),
-    #             self.step_count,
-    #         )
+    self.writer.add_scalar(
+                "custom/box_distance_loss_result",
+                torch.mean(box_distance_loss_result),
+                self.step_count,
+            )
 
-    # self.writer.add_scalar(
-    #             "custom/box_distance_reward",
-    #             torch.mean(box_distance_reward),
-    #             self.step_count,
-    #         )
+    self.writer.add_scalar(
+                "custom/box_distance_reward",
+                torch.mean(box_distance_reward),
+                self.step_count,
+            )
     #print(box_distance_reward[0])
     #print('----')
-    # k1 = 0.75
-    # box_distance_delta_xyz = (
-    #     box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
-    #     - red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2]
-    # )
-    # box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1)
-    # box_distance_min = torch.min(box_distance_norm, dim=-1)
-    # box_distance_min_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_min**2))
-
-    # self.writer.add_scalar(
-    #             "custom/box_distance_min",
-    #             torch.mean(box_distance_min),
-    #             self.step_count,
-    #         )
-
-    # self.writer.add_scalar(
-    #             "custom/box_distance_min_reward",
-    #             torch.mean(box_distance_min_reward),
-    #             self.step_count,
-    #         )
-
+    # # k1 = 0.75
+    # # box_distance_delta_xyz = (
+    # #     box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
+    # #     - red_rb_xyz.reshape(-1, 24, 3)[:, 1:, :2]
+    # # )
+    # # box_distance_mean_norm = torch.mean(
+    # #     torch.norm(box_distance_delta_xyz, dim=-1), dim=-1
+    # # )
     # # box_distance_mean_norm_reward = 1 - torch.exp(
     # #     -1 * (10**k1) * (box_distance_mean_norm**2)
     # # )
@@ -4534,37 +4521,37 @@ def compute_humanoid_reward(
     delta_head_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_head_xyz_mean_norm**2))
 
     
-    red_rb_pos_inv = red_rb_pos.reshape(-1, 24, 3) * 1
-    red_rb_pos_inv -= red_rb_pos_inv[:, [0]]
-    blue_rb_pos_inv = modified_rb_body_pos.reshape(-1, 24, 3) * 1
-    blue_rb_pos_inv -= blue_rb_pos_inv[:,[0]]
+    # red_rb_pos_inv = red_rb_pox.reshape(-1, 24, 3) * 1
+    # red_rb_pos_inv -= red_rb_pos_inv[:, [0]]
+    # blue_rb_pos_inv = modified_rb_body_pos.reshape(-1, 24, 3) * 1
+    # blue_rb_pos_inv -= blue_rb_pos_inv[:,[0]]
 
-    imitation_inv = (
-        red_rb_pos_inv.reshape(-1, 24, 3)
-        - blue_rb_pos_inv.reshape(-1, 24, 3)
-    )
-    imitation_inv_mean_norm = torch.mean(torch.norm(imitation_inv, dim=-1), dim=-1)
-    imitation_inv_reward = 1e0 * torch.exp(-(imitation_inv_mean_norm**2))
+    # imitation_inv = (
+    #     red_rb_pos_inv.reshape(-1, 24, 3)
+    #     - blue_rb_pos_inv.reshape(-1, 24, 3)
+    # )
+    # imitation_inv_mean_norm = torch.mean(torch.norm(imitation_inv, dim=-1), dim=-1)
+    # imitation_inv_reward = 1e0 * torch.exp(-(imitation_inv_mean_norm**2))
 
-    self.writer.add_scalar(
-                "custom/imitation_inv_mean_norm",
-                torch.mean(imitation_inv_mean_norm),
-                self.step_count,
-            )
-    self.writer.add_scalar(
-                "custom/imitation_inv_reward",
-                torch.mean(imitation_inv_reward),
-                self.step_count,
-            )
+    # self.writer.add_scalar(
+    #             "custom/imitation_inv_mean_norm",
+    #             torch.mean(imitation_inv_mean_norm),
+    #             self.step_count,
+    #         )
+    # self.writer.add_scalar(
+    #             "custom/imitation_inv_reward",
+    #             torch.mean(imitation_inv_reward),
+    #             self.step_count,
+    #         )
 
     delta_xyz = (
-        red_rb_pos.reshape(-1, 24, 3)
+        red_rb_pox.reshape(-1, 24, 3)
         - modified_rb_body_pos.reshape(-1, 24, 3)
     )
     delta_xyz_mean_norm = torch.mean(torch.norm(delta_xyz, dim=-1), dim=-1)
     delta_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_xyz_mean_norm**2))
 
-    delta_root_xyz = (red_rb_pos.reshape(-1, 24, 3)[:,[0]]- modified_rb_body_pos.reshape(-1, 24, 3)[:,[0]])
+    delta_root_xyz = (red_rb_pox.reshape(-1, 24, 3)[:,[0]]- modified_rb_body_pos.reshape(-1, 24, 3)[:,[0]])
     delta_root_xyz_mean_norm = torch.mean(torch.norm(delta_root_xyz, dim=-1), dim=-1)
     #print(delta_root_xyz_mean_norm[0])
     delta_root_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_root_xyz_mean_norm**2))
@@ -4616,9 +4603,9 @@ def compute_humanoid_reward(
         # # + 1e0 * torch.exp(-(delta_xyz_mean_norm**2))
         # + delta_continuity_reward
         #delta_xyz_mean_norm_reward
-        1 * imitation_inv_reward
-        + 1 * delta_root_xyz_mean_norm_reward
-        ####delta_xyz_mean_norm_reward
+        # # 1 * imitation_inv_reward
+        # # + 1 * delta_root_xyz_mean_norm_reward
+        delta_xyz_mean_norm_reward
         #delta_hand_xyz_mean_norm_reward
         # + box_distance_reward
         # - (10 * box_pos[...,2])
@@ -4712,7 +4699,7 @@ def compute_humanoid_reset(
         terminated = delta_mean_norm > 1
         #terminated = test > 1
         animation_ended = current_motion_times > _motion_lengths
-        #terminated |= animation_ended.squeeze(-1)
+        terminated |= animation_ended.squeeze(-1)
 
         
         box_fallen = _box_pos[...,2] > 0.1
@@ -4721,7 +4708,7 @@ def compute_humanoid_reset(
 
         test = torch.zeros_like(terminated)
 
-        #terminated = test
+        terminated = test
 
         terminated *= progress_buf > 2
 
