@@ -4716,7 +4716,7 @@ def compute_humanoid_reset(
         
         
 
-        terminated |= delta_mean_norm > 1
+        terminated = delta_mean_norm > 1
         #terminated = test > 1
         animation_ended = current_motion_times > _motion_lengths
         #terminated |= animation_ended.squeeze(-1)
@@ -4726,7 +4726,7 @@ def compute_humanoid_reset(
 
         #terminated |= box_fallen
 
-        #test = torch.zeros_like(terminated)
+        test = torch.zeros_like(terminated)
 
         #terminated = test
 
