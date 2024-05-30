@@ -26,6 +26,7 @@ if __name__ == "__main__":
     # Specify the paths of the source and destination directories
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", type=str, default="")
+    parser.add_argument("--checkpoint", type=str, default="")
     args = parser.parse_args()
     source_directory = "./src"
     destination_directory = f'./triton/{args.experiment}'
@@ -34,6 +35,7 @@ if __name__ == "__main__":
 
     triton_command = ['sbatch',f'--output=out/{args.experiment}.out',f'--job-name={args.experiment}', 'new_run.sh', ]
     triton_command.append(args.experiment)
+    triton_command.append(args.checkpoint)
     triton_sub = subprocess.Popen(  triton_command)
     triton_sub.wait()
     

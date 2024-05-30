@@ -34,6 +34,7 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
         a2c_continuous.A2CAgent.__init__(self, base_name, config)
 
         self.model.a2c_network.sigma.requires_grad = False
+        self.vec_env.env.writer = self.writer
 
     def calc_gradients(self, input_dict):
         value_preds_batch = input_dict["old_values"]
