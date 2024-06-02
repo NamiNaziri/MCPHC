@@ -56,7 +56,7 @@ class MyPlayer(players.PpoPlayerContinuous):
         self.writer = SummaryWriter(self.summaries_dir)
 
         self.env.writer = self.writer
-
+        self.env.epoch_count = self.last_checkpoint
         self.pl = pv.Plotter(off_screen=True, window_size=(608, 608))
         self.pl.enable_shadows()
         self.pl.add_mesh(
@@ -331,36 +331,38 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 #     self.writer.add_video(f'Single_Video/{i*45}', vid, self.last_checkpoint, dataformats="NTHWC", fps=30)
                                 #     print(f'single video{i} added')
                                 # single_rotating_images = [[] for _ in range(8)]
-                                movie_path = os.path.join(
-                                    self.summaries_dir, "movie.mp4"
-                                )
-                                w = imageio.get_writer(
-                                    movie_path,
-                                    format="FFMPEG",
-                                    mode="I",
-                                    fps=15,
-                                    codec="h264",
-                                    pixelformat="yuv420p",
-                                )
-                                for img in imgs:
-                                    w.append_data(img)
-                                w.close()
+                                
+                                # movie_path = os.path.join(
+                                #     self.summaries_dir, "movie.mp4"
+                                # )
+                                # w = imageio.get_writer(
+                                #     movie_path,
+                                #     format="FFMPEG",
+                                #     mode="I",
+                                #     fps=15,
+                                #     codec="h264",
+                                #     pixelformat="yuv420p",
+                                # )
+                                # for img in imgs:
+                                #     w.append_data(img)
+                                # w.close()
 
-                                green_movie_path = os.path.join(
-                                    self.summaries_dir, "movie_greenOnly.mp4"
-                                )
-                                w = imageio.get_writer(
-                                    green_movie_path,
-                                    format="FFMPEG",
-                                    mode="I",
-                                    fps=15,
-                                    codec="h264",
-                                    pixelformat="yuv420p",
-                                )
-                                for img in imgs_green_only:
-                                    w.append_data(img)
-                                w.close()
-
+                                # green_movie_path = os.path.join(
+                                #     self.summaries_dir, "movie_greenOnly.mp4"
+                                # )
+                                # w = imageio.get_writer(
+                                #     green_movie_path,
+                                #     format="FFMPEG",
+                                #     mode="I",
+                                #     fps=15,
+                                #     codec="h264",
+                                #     pixelformat="yuv420p",
+                                # )
+                                # for img in imgs_green_only:
+                                #     w.append_data(img)
+                                # w.close()
+                                
+                                
                                 nvid = np.stack(imgs)[None]
                                 # TODO uncomment this
                                 self.writer.add_video(

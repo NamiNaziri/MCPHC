@@ -194,8 +194,9 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
                 lr_mul,
             ) = self.train_epoch()
             self.model.a2c_network.sigma.data = torch.clip(
-                self.model.a2c_network.sigma - 0.001, -5.0, 0.5
+                self.model.a2c_network.sigma - 0.001, -3.8, 0.5
             )
+            self.vec_env.env.epoch_count = epoch_num
 
             total_time += sum_time
             frame = self.frame

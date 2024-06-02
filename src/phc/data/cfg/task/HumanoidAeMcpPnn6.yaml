@@ -15,7 +15,7 @@ env:
   ae_type: "pvae_dof"  #Can be {ae, vae, cvae,pvae,dof,pvae_dof none}
   actor_init_pos: "static" # Can be {static, random, back_to_back}
   root_motion: False
-  physics_enable: True
+  physics_enable: False
   gate_pvae: False
 
   bias_offset: False

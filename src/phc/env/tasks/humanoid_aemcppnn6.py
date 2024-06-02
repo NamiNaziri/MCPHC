@@ -26,11 +26,15 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from uuid import uuid4
 import numpy as np
 import os
-
+import PIL.Image
+from torchvision.transforms import ToTensor
 import multiprocessing
 from scipy.spatial.transform import Rotation
 import joblib
@@ -56,6 +60,7 @@ from poselib.poselib.skeleton.skeleton3d import SkeletonMotion, SkeletonState
 from scipy.spatial.transform import Rotation as sRot
 import gc
 from phc.utils.draw_utils import agt_color, get_color_gradient
+from phc.utils.easy_plot import EasyPlot
 
 from phc.utils.motion_lib_smpl import MotionLibSMPL
 import re
@@ -184,6 +189,14 @@ class HumanoidAeMcpPnn6(VecTask):
         force_render,
     ):
         # def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless):
+        #plt.ion()  # Turn on interactive mode
+        i = 4
+        j = 3
+        self.fig, self.axs = plt.subplots(i,j, figsize=(i * 15, j * 5))  # Creating two subplots horizontally
+        plt.tight_layout()
+        #plt.subplots_adjust(left=0.9, right=1, top=1, bottom=0.9)
+        self.fig.suptitle('Dynamic Plots')  # Adding a title to the entire figure
+        self.easy_plot = EasyPlot()
         self.cfg = cfg
         # self.cfg = cfg
         # self.sim_params = sim_params
@@ -318,6 +331,7 @@ class HumanoidAeMcpPnn6(VecTask):
             #ae_dict = torch.load(f"{proj_dir}/good/vae_000200.pkl") #pvae with dof for 2 parts, circle + 1k anim
             ae_dict = torch.load(f"{proj_dir}/good/vae_000180.pkl") #pvae with dof for 2 parts, circle + 1k anim, kld 1e-4, 32dim, 2048 hidden
             #ae_dict = torch.load(f"{proj_dir}/good/vae_001240.pkl") #pvae with dof for 2 parts, circle + 1k anim, kld 1e-2, 32dim, 2048 hidden
+            #ae_dict = torch.load(f"{proj_dir}/good/vae_001940.pkl") #five_part_kld_1e-6_latent_32_hidden_2048
             
 
             
@@ -2436,7 +2450,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
         for i in range(self.input_lats.shape[-1]):
 
-            self.writer.add_scalar(
+            self.plot_scaler(
                     f'action/action_{i}',
                     torch.mean(self.input_lats[...,i]),
                     self.step_count,
@@ -2946,7 +2960,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self._sampled_motion_ids[env_ids].flatten().numpy()
         )
         # set start anim time to zero for evaluation
-        if self.num_envs == 1:
+        if self.num_envs <= 5:
             motion_times *= 0
 
         if self.smpl_humanoid:
@@ -3776,7 +3790,7 @@ class HumanoidAeMcpPnn6(VecTask):
             train_yes=False,
         )
         self.blue_latent = mu * 1
-
+        
         latent_edit = self.input_lats[..., :latent_dim]
         if(self.gate_pvae):
             gates = self.input_lats[..., -5:]
@@ -3786,15 +3800,21 @@ class HumanoidAeMcpPnn6(VecTask):
             latent_edit *= gates
 
         edited_ys = raw_ys * 1
-
+        #z = mu * 1
+        #z[..., 11:] += 10 * latent_edit[..., 11:]
         # it is 3x because we assume that the latent is a normal distribution so the latent should be between -3 and -3
-        z = 20 * input_lats_importance * latent_edit + input_my_lats_importance * mu
-
+        coef = [ 1.        ,  1.39494009,  1.94585785,  2.71435512,  3.78636278,
+        5.28174923,  7.36772374, 10.27753321, 14.33654309, 19.9986187 ]
+        #NOTE ignores lower body
+        latent_edit[..., :11] = latent_edit[..., :11] * 0
+        z = coef[9] * input_lats_importance * latent_edit + input_my_lats_importance * mu
+        
         self.red_latent = z * 1
         #z[..., 6:] =  input_lats_importance * latent_edit[..., 6:]
         current_start = 0
         decodeds=[]
         for index, hs in enumerate(self.ae.hammer_size):
+           
             chain_z = z[:, current_start: current_start + hs] * 1
             current_start += hs
             decodeds.append(self.ae.decode(chain_z, index))
@@ -3812,7 +3832,7 @@ class HumanoidAeMcpPnn6(VecTask):
         if(self.gate_pvae):
             changed_root[..., :2] += self.input_lats[...,-7:-5] 
         else:
-            changed_root[..., :2] += self.input_lats[...,-2:] 
+            changed_root[..., :2] += self.input_lats[...,latent_dim:] 
 
         if(self.root_motion):
             changed_root = motion_res["root_pos"]
@@ -3916,7 +3936,10 @@ class HumanoidAeMcpPnn6(VecTask):
         # print(self.input_lats.shape)
         # print(self.input_lats[0,:69].shape)
         #self.blue_dof_pos = dof_pos * 1
-        dof_pos += self.input_lats[...,:69]
+        #for testing, lets set the lower body to 0
+        self.input_lats[...,:24] = self.input_lats[...,:24] * 0
+        dof_pos += self.input_lats[...,:69] * 1000
+        #print(dof_pos)
         #self.red_dof_pos = dof_pos * 1 
 
         pose_quat = Rotation.from_rotvec(dof_pos.reshape(-1, 3)).as_quat().reshape(-1, 23, 4)
@@ -4057,7 +4080,7 @@ class HumanoidAeMcpPnn6(VecTask):
                 ),
             )
             if(self.physics_enable):
-                self.writer.add_scalar(
+                self.plot_scaler(
                 "custom/ref_velocity",
                 torch.mean(self.ref_body_vel.reshape(self.num_envs * num_agents, -1)),
                 self.step_count,
@@ -4065,7 +4088,7 @@ class HumanoidAeMcpPnn6(VecTask):
                 #print(torch.mean(self.ref_body_vel.reshape(self.num_envs * num_agents, -1)))
                 calc_speed = ((self.blue_rb_xyz - self.prev_blue_rb_xyz) / 0.01666666666).reshape(self.num_envs * num_agents, -1)
                 #print(torch.mean(((self.red_rb_xyz - self.prev_red_rb_xyz) / 0.01666666666).reshape(self.num_envs * num_agents, -1)))
-                self.writer.add_scalar(
+                self.plot_scaler(
                 "custom/calc_velocity",
                 torch.mean(calc_speed),
                 self.step_count,
@@ -4299,6 +4322,7 @@ class HumanoidAeMcpPnn6(VecTask):
             self._cam_prev_char_pos[1] - 3.0,
             3.0,
         )
+        print(self.new_cam_pos_vis)
         self.new_cam_target_vis = (
             self._cam_prev_char_pos[0],
             self._cam_prev_char_pos[1],
@@ -4322,11 +4346,18 @@ class HumanoidAeMcpPnn6(VecTask):
         new_cam_pos = gymapi.Vec3(
             char_root_pos[0] + cam_delta[0], char_root_pos[1] + cam_delta[1], cam_pos[2]
         )
-        self.new_cam_pos_vis = (
-            char_root_pos[0] + cam_delta[0],
-            char_root_pos[1] + cam_delta[1],
-            cam_pos[2],
-        )
+
+        if(self.num_envs == 1):
+            self.new_cam_pos_vis = (
+                2.6125659942626953, -5.503269195556641, 1.7383817434310913
+            )
+        else:
+            self.new_cam_pos_vis = (
+                char_root_pos[0] + cam_delta[0],
+                char_root_pos[1] + cam_delta[1],
+                cam_pos[2],
+            )
+        #print(self.new_cam_pos_vis)
         self.new_cam_target_vis = (char_root_pos[0], char_root_pos[1], 1.0)
         # self.gym.set_camera_location(self.recorder_camera_handle, self.envs[0], new_cam_pos, new_cam_target)
         
@@ -4338,6 +4369,54 @@ class HumanoidAeMcpPnn6(VecTask):
 
         self._cam_prev_char_pos[:] = char_root_pos
         return
+    def plot_scaler(self, title, scaler, step_count ):
+        if(self.num_envs > 1): #don't plot scaler during evaluation
+            self.writer.add_scalar(
+                    title,
+                    scaler,
+                    step_count,
+                )
+    def update_plot(self, plot_index, x , y, title):
+        # Plot red circles for current points
+        i =plot_index// self.axs.shape[1]
+        j =plot_index% self.axs.shape[1]
+        #print(f"{i}, {j}")
+        self.axs[i,j].plot(x, y, 'ro')  # Red circle for Data 1
+
+        # Plot line between previous and current points
+        if x > 1:
+            prev_x = self.axs[i,j].get_lines()[-2].get_xdata()[-1]
+            prev_y = self.axs[i,j].get_lines()[-2].get_ydata()[-1]
+            self.axs[i,j].plot([prev_x, x], [prev_y, y], 'r-')  # Red line for Data 1
+        
+        # Set limits for better visualization (optional)
+        # axs[0].set_xlim(0, 10)
+        # axs[1].set_xlim(0, 10)
+        
+        # Add legend and pause
+        self.axs[i,j].set_title(title)
+        #self.axs[i,j].legend(['Data 1'])
+        self.axs[i,j].relim()
+        self.axs[i,j].autoscale_view()
+        #self.fig.canvas.draw()
+        #self.fig.canvas.flush_events()
+
+        #plt.draw() 
+        # plt.savefig("mygraph.png")
+        # buf = io.BytesIO()
+        # plt.savefig(buf, format='png')
+        # buf.seek(0)
+        # image = PIL.Image.open(buf)
+        # image = ToTensor()(image).unsqueeze(0)
+        # self.fig.canvas.draw()
+        # image = np.frombuffer(self.fig.canvas.tostring_rgb(), dtype='uint8')
+        # image = image.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
+        # plt.close(self.fig)
+        
+
+        # plt.show(block=True)
+        # plt.close()
+        #plt.pause(0.5)
 
     def _update_debug_viz(self):
         self.gym.clear_lines(self.viewer)
@@ -4602,7 +4681,7 @@ def compute_humanoid_reward(
         self,
         _rigid_body_pos,
         red_rb_pos,
-        modified_rb_body_pos,
+        blue_rb_pos,
         red_rb_root_xyz,
         prev_red_rb_root_xyz,
         blue_rb_root_xyz,
@@ -4617,8 +4696,7 @@ def compute_humanoid_reward(
     # # target_x_velocity = torch.tensor([[1.0, 0.0, 0.0]], device=red_rb_root_xyz.device)
     # # velocity_norm = torch.linalg.norm(root_velocity - target_x_velocity, dim=-1)
     # # velocity_reward = torch.clip((60 - velocity_norm) / 60, 0, 1)
-
-
+    
     box_distance_mse_loss = torch.nn.functional.mse_loss(
         box_pos[..., :2], _rigid_body_pos[..., :2], reduction="none"
     )
@@ -4627,19 +4705,51 @@ def compute_humanoid_reward(
     k1 = 1
     box_distance_reward = 1 - torch.exp(-1 * (10**k1) * box_distance_loss_result)
 
-    # self.writer.add_scalar(
+    # self.plot_scaler(
     #             "custom/box_distance_loss_result",
     #             torch.mean(box_distance_loss_result),
     #             self.step_count,
     #         )
 
-    # self.writer.add_scalar(
+    # self.plot_scaler(
     #             "reward/box_distance_reward",
     #             torch.mean(box_distance_reward),
     #             self.step_count,
     #         )
-   
+    box_distance_to_blue = (box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)- blue_rb_pos.reshape(-1, 24, 3)[:, 1:, :2])
+    box_distance_to_blue_norm = torch.norm(box_distance_to_blue, dim=-1)
+    max = torch.max(box_distance_to_blue_norm, dim=-1).values
+    min = torch.min(box_distance_to_blue_norm, dim=-1).values
+    min_idx = torch.min(box_distance_to_blue_norm, dim=-1).indices
+    diff = (max-min).reshape(max.shape[0], 1)
+    distance_weight_mat = (max[:, None] - box_distance_to_blue_norm ) / diff
 
+    k1 = -1.3
+    box_distance_delta_xyz = (
+        box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
+        - red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2]
+    )
+    box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1) 
+    box_distance_norm_weighted = box_distance_norm * distance_weight_mat
+    box_distance_sum = torch.sum(box_distance_norm_weighted, dim=-1) # the bigger the sum, the better the reward
+    #print(box_distance_sum)
+    box_distance_sum_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_sum**2))
+
+    
+    
+    #print(box_distance_sum_reward)
+    self.plot_scaler(
+                "custom/box_distance_sum",
+                torch.mean(box_distance_sum),
+                self.step_count,
+            )
+
+    self.plot_scaler(
+                "reward/box_distance_sum_reward",
+                torch.mean(box_distance_sum_reward),
+                self.step_count,
+            )
+    
     k1 = 0.75
     box_distance_delta_xyz = (
         box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
@@ -4649,58 +4759,74 @@ def compute_humanoid_reward(
     box_distance_min = torch.min(box_distance_norm, dim=-1).values
     box_distance_min_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_min**2))
 
-    self.writer.add_scalar(
+    # for a1 in self.axs:
+    #     for ax in a1:
+    #         ax.axis('off')
+    # self.axs[2,2].axis('on')
+
+    self.plot_scaler(
                 "custom/box_distance_min",
                 torch.mean(box_distance_min),
                 self.step_count,
             )
 
-    self.writer.add_scalar(
+    self.plot_scaler(
                 "reward/box_distance_min_reward",
                 torch.mean(box_distance_min_reward),
                 self.step_count,
             )
+
+    
+
+    # self.plot_scaler(
+    #             "custom/min_ref_box_distance_env_0",
+    #             min_idx[0],
+    #             self.step_count,
+    #         )
     
     red_rb_pos_inv = red_rb_pos.reshape(-1, 24, 3) * 1
     red_rb_pos_inv -= red_rb_pos_inv[:, [0]]
-    blue_rb_pos_inv = modified_rb_body_pos.reshape(-1, 24, 3) * 1
+    blue_rb_pos_inv = blue_rb_pos.reshape(-1, 24, 3) * 1
     blue_rb_pos_inv -= blue_rb_pos_inv[:,[0]]
 
+    k5 = 0.7
     imitation_inv = (
         red_rb_pos_inv.reshape(-1, 24, 3)
         - blue_rb_pos_inv.reshape(-1, 24, 3)
     )
     imitation_inv_mean_norm = torch.mean(torch.norm(imitation_inv, dim=-1), dim=-1)
-    imitation_inv_reward = 1e0 * torch.exp(-(imitation_inv_mean_norm**2))
+    imitation_inv_reward = 1e0 * torch.exp(-1 * (10**k5) * (imitation_inv_mean_norm**2))
 
-    self.writer.add_scalar(
+
+    self.plot_scaler(
                 "custom/imitation_inv_mean_norm",
                 torch.mean(imitation_inv_mean_norm),
                 self.step_count,
             )
-    self.writer.add_scalar(
+    self.plot_scaler(
                 "reward/imitation_inv_reward",
                 torch.mean(imitation_inv_reward),
                 self.step_count,
             )
 
-    delta_root_xyz = (red_rb_pos.reshape(-1, 24, 3)[:,[0]]- modified_rb_body_pos.reshape(-1, 24, 3)[:,[0]])
+    delta_root_xyz = (red_rb_pos.reshape(-1, 24, 3)[:,[0]]- blue_rb_pos.reshape(-1, 24, 3)[:,[0]])
     delta_root_xyz_mean_norm = torch.mean(torch.norm(delta_root_xyz, dim=-1), dim=-1)
     delta_root_xyz_mean_norm_reward = 1e0 * torch.exp(-(delta_root_xyz_mean_norm**2))
 
-    self.writer.add_scalar(
+
+    self.plot_scaler(
                 "custom/delta_root_xyz_mean_norm",
                 torch.mean(delta_root_xyz_mean_norm),
                 self.step_count,
             )
 
-    self.writer.add_scalar(
+    self.plot_scaler(
                 "reward/delta_root_xyz_mean_norm_reward",
                 torch.mean(delta_root_xyz_mean_norm_reward),
                 self.step_count,
             )
     
-    self.writer.add_scalar(
+    self.plot_scaler(
                 "custom/box_heigh",
                 torch.mean(-10 *box_pos[...,2]),
                 self.step_count,
@@ -4715,28 +4841,100 @@ def compute_humanoid_reward(
     blue_velocity_mag = torch.norm((blue_rb_root_xyz - prev_blue_rb_root_xyz), dim = -1)
     velocity_mag_distance = red_velocity_mag - blue_velocity_mag
     velocity_reward = 1e0 * torch.exp(-1 * (10**k4) * (velocity_mag_distance**2))
-    self.writer.add_scalar(
+
+    
+    self.plot_scaler(
                 "custom/velocity_mag_distance",
                 torch.mean(velocity_mag_distance),
                 self.step_count,
             )
 
-    self.writer.add_scalar(
+    self.plot_scaler(
                 "reward/velocity_reward",
                 torch.mean(velocity_reward),
                 self.step_count,
             )
+    
+    self.plot_scaler(
+                "reward/root_and_box_reward",
+                torch.mean(delta_root_xyz_mean_norm_reward).item() + torch.mean(box_distance_min_reward).item(),
+                self.step_count,
+            )
+    
 
+    
+    if(self.num_envs == 1):
+        self.easy_plot.add_point(self.step_count, torch.mean(box_distance_sum).item(), 'box_distance_sum')
+        self.easy_plot.add_point(self.step_count, torch.mean(box_distance_sum_reward).item(), 'box_distance_sum_reward')
+        self.easy_plot.add_point(self.step_count, torch.mean(box_distance_min).item(), 'box_distance_min')
+        self.easy_plot.add_point(self.step_count, torch.mean(box_distance_min_reward).item(), 'box_distance_min_reward')
+        self.easy_plot.add_point(self.step_count, torch.mean(imitation_inv_mean_norm).item(), 'imitation_inv_mean_norm')
+        self.easy_plot.add_point(self.step_count, torch.mean(imitation_inv_reward).item(), 'imitation_inv_reward')
+
+        self.easy_plot.add_point(self.step_count, torch.mean(delta_root_xyz_mean_norm).item(), 'delta_root_xyz_mean_norm')
+        self.easy_plot.add_point(self.step_count, torch.mean(delta_root_xyz_mean_norm_reward).item(), 'delta_root_xyz_mean_norm_reward')
+        self.easy_plot.add_point(self.step_count, torch.mean(-10 *box_pos[...,2]).item(), 'box_heigh')
+        self.easy_plot.add_point(self.step_count, torch.mean(velocity_mag_distance).item(), 'velocity_mag_distance')
+        self.easy_plot.add_point( self.step_count, torch.mean(velocity_reward).item(), 'velocity_reward')
+        self.easy_plot.add_point( self.step_count, torch.mean(delta_root_xyz_mean_norm_reward).item() + torch.mean(box_distance_min_reward).item(), 'root_and_box_reward')
+        # self.update_plot(0, self.step_count, torch.mean(box_distance_sum).item(), 'box_distance_sum')
+        # self.update_plot(1, self.step_count, torch.mean(box_distance_sum_reward).item(), 'box_distance_sum_reward')
+        # self.update_plot(2, self.step_count, torch.mean(box_distance_min).item(), 'box_distance_min')
+        # self.update_plot(3, self.step_count, torch.mean(box_distance_min_reward).item(), 'box_distance_min_reward')
+        # self.update_plot(4, self.step_count, torch.mean(imitation_inv_mean_norm).item(), 'imitation_inv_mean_norm')
+        # self.update_plot(5, self.step_count, torch.mean(imitation_inv_reward).item(), 'imitation_inv_reward')
+
+        # self.update_plot(6, self.step_count, torch.mean(delta_root_xyz_mean_norm).item(), 'delta_root_xyz_mean_norm')
+        # self.update_plot(7, self.step_count, torch.mean(delta_root_xyz_mean_norm_reward).item(), 'delta_root_xyz_mean_norm_reward')
+        # self.update_plot(8, self.step_count, torch.mean(-10 *box_pos[...,2]).item(), 'box_heigh')
+        # self.update_plot(9, self.step_count, torch.mean(velocity_mag_distance).item(), 'velocity_mag_distance')
+        # self.update_plot(10, self.step_count, torch.mean(velocity_reward).item(), 'velocity_reward')
+        # self.update_plot(11, self.step_count, torch.mean(delta_root_xyz_mean_norm_reward).item() + torch.mean(box_distance_min_reward).item(), 'root_and_box_reward')
+
+        if(self.step_count % 100 == 0):
+            print(self.step_count)
+        if(self.step_count == self.max_episode_length - 1):
+            print(self.step_count)
+            self.easy_plot.plot(self.writer, self.epoch_count)
+            # for a1 in self.axs:
+            #     for ax in a1:
+            #         fig_new, ax_new = plt.subplots(1, figsize=(7, 3))
+            #         fig_new.tight_layout()
+            #         title = ax.title._text
+            #         for line in ax.lines:
+            #             if(len(line._x) > 1):
+            #                 x = line._x
+            #                 y = line._y
+
+            #                 ax_new.plot([x[0], x[1]], [y[0], y[1]], 'r-')
+                            
+            #                 ax_new.set_title(title)
+            #         if(len(ax.lines) > 0):
+            #             if('reward' in title):
+
+            #                 self.writer.add_figure(f"matplot_reward/{title}", fig_new, self.epoch_count)
+            #             else:
+            #                 self.writer.add_figure(f"matplot/{title}", fig_new, self.epoch_count)
+            #         plt.close(fig_new)
+        
+            # self.writer.add_figure(f"matplot/matplot", self.fig, self.epoch_count)
+    # self.writer.add_figure(
+    #         f"custom/test",
+    #         plt.gcf(),
+    #         global_step=self.epoch_count,
+    #     )
+    coeff = [ 0.1       ,  0.16681005,  0.27825594,  0.46415888,  0.77426368,1.29154967,  2.15443469,  3.59381366,  5.9948425 , 10.        ]
     reward = (
         1 * imitation_inv_reward
         + 1 * delta_root_xyz_mean_norm_reward
-        + box_distance_min_reward
-        + velocity_reward
+        +  coeff[1] * box_distance_min_reward
+        # + velocity_reward
     )
     return reward
 
 
-# @torch.jit.script
+
+@torch.jit.script
 def compute_humanoid_reset(
     step_count,
     hand_idx,
@@ -4804,22 +5002,22 @@ def compute_humanoid_reset(
         # root_delta_xyz = red_rb_root_xyz - prev_red_rb_root_xyz
         # red_root_distance = torch.mean(torch.norm(root_delta_xyz, dim=-1), dim=-1)
         #print(delta_mean_norm)
-        hand_xyz = red_rb_xyz.reshape(-1, 24, 3)[:, hand_idx]
+        #hand_xyz = red_rb_xyz.reshape(-1, 24, 3)[:, hand_idx]
         #target = hand_xyz * 1
         #target[..., 2] = 2
         #target_hand_xyz = hand_xyz * 1
         #delta_hand_xyz = hand_xyz - target
-        delta_hand_xyz = hand_xyz[..., [2]] - 2
-        delta_hand_xyz_mean_norm = torch.norm(delta_hand_xyz, dim=-1)
+        #delta_hand_xyz = hand_xyz[..., [2]] - 2
+        #delta_hand_xyz_mean_norm = torch.norm(delta_hand_xyz, dim=-1)
         #print(delta_hand_xyz_mean_norm[0])
-        threshold = max((2.0 - 0.2 * (step_count/(800))),  0.2)
+        #threshold = max((2.0 - 0.2 * (step_count/(800))),  0.2)
         #print((threshold))
         #terminated |= delta_hand_xyz_mean_norm > threshold
         
         delta_root_xyz = (red_rb_xyz.reshape(-1, 24, 3)[:,[0]]- blue_rb_xyz.reshape(-1, 24, 3)[:,[0]])
         delta_root_xyz_mean_norm = torch.mean(torch.norm(delta_root_xyz, dim=-1), dim=-1)
 
-        terminated |= delta_mean_norm > 0.8
+        terminated |= delta_mean_norm > 1
         #terminated = test > 1
         animation_ended = current_motion_times > _motion_lengths
         #terminated |= animation_ended.squeeze(-1)
@@ -4827,7 +5025,7 @@ def compute_humanoid_reset(
         
         box_fallen = _box_pos[...,2] > 0.1
 
-        terminated |= box_fallen
+        #terminated |= box_fallen
 
         #test = torch.zeros_like(terminated)
 
