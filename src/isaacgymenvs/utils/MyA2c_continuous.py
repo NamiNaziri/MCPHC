@@ -35,6 +35,7 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
 
         self.model.a2c_network.sigma.requires_grad = False
         self.vec_env.env.writer = self.writer
+        self.last_saved_checkpoint = 0
 
     def calc_gradients(self, input_dict):
         value_preds_batch = input_dict["old_values"]
@@ -330,11 +331,14 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
                     if (
                         mean_rewards[0] > self.last_mean_rewards
                         and epoch_num >= self.save_best_after
+                        and ((epoch_num - self.last_saved_checkpoint ) > 50)
                     ):
                         print("saving next best rewards: ", mean_rewards)
+                        self.last_saved_checkpoint = epoch_num
                         self.last_mean_rewards = mean_rewards[0]
-                        self.save(os.path.join(self.nn_dir, self.config["name"]))
-                        if self.last_mean_rewards > self.config["score_to_win"]:
+                        self.save(os.path.join(self.nn_dir, self.config["name"] + checkpoint_name))
+                        if ((self.last_mean_rewards > self.config["score_to_win"]) ):
+                            
                             print("Network won!")
                             self.save(os.path.join(self.nn_dir, checkpoint_name))
                             should_exit = True

@@ -17,6 +17,12 @@ env:
   root_motion: False
   physics_enable: False
   gate_pvae: False
+  calc_root_dir: True
+  root_dir_action: True
+  sweep: False
+  sweep1: 0
+  sweep2: 0
+  sweep3: 0
 
   bias_offset: False
   has_self_collision: True

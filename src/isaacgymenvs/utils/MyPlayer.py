@@ -67,7 +67,7 @@ class MyPlayer(players.PpoPlayerContinuous):
             color="black",
         )
         self.pl.add_axes()
-        distance = 10
+        distance = 100
         self.pl.camera.position = (distance, distance, 5)
         self.pl.camera.focal_point = (0, 0, 0)
 
@@ -178,9 +178,9 @@ class MyPlayer(players.PpoPlayerContinuous):
 
                 for i in range(24):
                     blue_actor = self.blue_actors[i]
-                    blue_actor.SetVisibility(True)
+                    # blue_actor.SetVisibility(True)
                     red_actor = self.red_actors[i]
-                    red_actor.SetVisibility(True)
+                    # red_actor.SetVisibility(True)
                     green_actor = self.green_actor[i]
                     m = np.eye(4)
                     m[:3, 3] = blue_rb_xyz[0][i]
@@ -196,17 +196,25 @@ class MyPlayer(players.PpoPlayerContinuous):
 
                 if n % 4 == 0:
                     if hasattr(self.env, "new_cam_pos_vis"):
+                       # print(self.env.new_cam_pos_vis)
+                        
                         self.pl.camera.position = self.env.new_cam_pos_vis
                         self.pl.camera.focal_point = self.env.new_cam_target_vis
                     self.pl.render()
                     img = np.array(self.pl.screenshot())
                     imgs.append(img)
 
-                    for i in range(24):
-                        blue_actor = self.blue_actors[i]
-                        blue_actor.SetVisibility(False)
-                        red_actor = self.red_actors[i]
-                        red_actor.SetVisibility(False)
+                    #change camera for green only scene
+                    if hasattr(self.env, "new_cam_pos_vis2"):
+                        #print(self.env.new_cam_pos_vis2)
+                        self.pl.camera.position = self.env.new_cam_pos_vis2
+                        self.pl.camera.focal_point = self.env.new_cam_target_vis2
+
+                    # for i in range(24):
+                    #     blue_actor = self.blue_actors[i]
+                    #     blue_actor.SetVisibility(False)
+                    #     red_actor = self.red_actors[i]
+                    #     red_actor.SetVisibility(False)
                     self.pl.render()
                     img = np.array(self.pl.screenshot())
 
@@ -332,9 +340,9 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 #     print(f'single video{i} added')
                                 # single_rotating_images = [[] for _ in range(8)]
                                 
-                                # movie_path = os.path.join(
-                                #     self.summaries_dir, "movie.mp4"
-                                # )
+                                movie_path = os.path.join(
+                                    self.summaries_dir, "movie.mp4"
+                                )
                                 # w = imageio.get_writer(
                                 #     movie_path,
                                 #     format="FFMPEG",
@@ -363,21 +371,21 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 # w.close()
                                 
                                 
-                                nvid = np.stack(imgs)[None]
+                                nvid1 = np.stack(imgs)[None]
                                 # TODO uncomment this
                                 self.writer.add_video(
                                     "Video/Full",
-                                    nvid,
+                                    nvid1,
                                     self.last_checkpoint,
                                     dataformats="NTHWC",
                                     fps=15,
                                 )
 
-                                nvid = np.stack(imgs_green_only)[None]
+                                nvid2 = np.stack(imgs_green_only)[None]
                                 # TODO uncomment this
                                 self.writer.add_video(
                                     "Video/GreenOnly",
-                                    nvid,
+                                    nvid2,
                                     self.last_checkpoint,
                                     dataformats="NTHWC",
                                     fps=15,

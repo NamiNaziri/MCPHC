@@ -27,12 +27,16 @@ def get_directories_and_files(parent_directory):
     for root, dirs, files in os.walk(parent_directory):
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
-            directory_contents[dir_path] = set(os.listdir(dir_path))
+            file_list = os.listdir(dir_path)
+            file_list.sort(key=lambda x: os.path.getmtime(os.path.join(dir_path, x)))  # Sort files by modification time
+            directory_contents[dir_path] = file_list
+            #directory_contents[dir_path] = set(os.listdir(dir_path))
     return directory_contents
 
 def monitor_directory(parent_directory, polling_interval=10):
     """Monitors the directory for new folders and files."""
     previous_state = get_directories_and_files(parent_directory)
+    
     print(f"Monitoring directory: {parent_directory}")
     
     while True:
@@ -52,16 +56,17 @@ def monitor_directory(parent_directory, polling_interval=10):
         for directory in current_state:
             if directory in previous_state:
                 new_files = current_state[directory] - previous_state[directory]
+                print(new_files)
                 for new_file in new_files:
                     if ".pth" in new_file:
                         parts = directory.split('/')
                         print(f"New file created in {directory}:*Start* {os.path.join(directory, new_file)}")
                         experiment = parts[1]
                         try:
-                            #subprocess.run(['python', 'eval_easy_logger.py', '--experiment', experiment, '--checkpoint', new_file], check=True)
+                            subprocess.run(['python', 'eval_easy_logger.py', '--experiment', experiment, '--checkpoint', new_file], check=True, shell=False,)
                             
-                            p = subprocess.Popen(['python', 'eval_easy_logger.py', '--experiment', experiment, '--checkpoint', new_file], stdout=subprocess.PIPE, stderr=subprocess. STDOUT, shell=True)
-                            p.wait()
+                            # p = subprocess.Popen(['python', 'eval_easy_logger.py', '--experiment', experiment, '--checkpoint', new_file], stdout=subprocess.PIPE, stderr=subprocess. STDOUT, shell=True)
+                            # p.wait()
                         except subprocess.CalledProcessError as e:
                             print(f"Error executing eval_easy.py: {e}")
 
