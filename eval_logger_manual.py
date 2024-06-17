@@ -43,7 +43,7 @@ def monitor_directory(parent_directory, polling_interval=2):
     #     for file in files:
     #         print(os.path.join(directory, file))
     eval_state = {}
-    runs = ['test_sweep26_7_2']
+    runs = ['t1_57_2_21_0','t1_57_2_21_1' ,'t1_57_2_21_2','t1_57_2_21_3','t1_57_2_21_4','t1_57_2_21_5','t1_57_2_21_7','t1_57_2_21_9']
     for run in runs:
         for (directory, files) in previous_state.items():
             if( run in directory):

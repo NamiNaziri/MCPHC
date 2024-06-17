@@ -41,7 +41,6 @@ import joblib
 import time
 
 import pauli
-#import pauli
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
 # from mlexp_utils.dirs import proj_dir
@@ -85,7 +84,6 @@ HACK_MOTION_SYNC = False
 ENABLE_MAX_COORD_OBS = True
 normal = False
 latent_dim = 31
-key_collision_part_list = ["Pelvis", "L_Ankle", "L_Toe", "R_Ankle", "R_Toe"]
 # PERTURB_OBJS = [
 #     ["small", 60],
 #     ["small", 7],
@@ -214,7 +212,6 @@ class HumanoidAeMcpPnn6(VecTask):
         self.gate_pvae = self.cfg["env"]["gate_pvae"]
         self.calc_root_dir = self.cfg["env"]["calc_root_dir"]
         self.root_dir_action = self.cfg["env"]["root_dir_action"]
-        self.random_box_pos = self.cfg["env"]["random_box_pos"]
         self.sweep = self.cfg["env"]["sweep"]
         print(f'sweep: {self.sweep}')
         self.sweep1 = self.cfg["env"]["sweep1"]
@@ -465,13 +462,9 @@ class HumanoidAeMcpPnn6(VecTask):
         small_asset_options.density = 100.0
         # small_asset_options.fix_base_link = True
         small_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
-        # self._small_proj_asset = self.gym.load_asset(
-        #     self.sim, asset_root, small_asset_file, small_asset_options
-        # )
-        self.box_x_scale= 0.3
-        self.box_y_scale = 0.3
-        self.box_z_scale = 2
-        self._small_proj_asset = self.gym.create_box(self.sim, self.box_x_scale, self.box_y_scale, self.box_z_scale, small_asset_options)
+        self._small_proj_asset = self.gym.load_asset(
+            self.sim, asset_root, small_asset_file, small_asset_options
+        )
 
         large_asset_file = "block_projectile_large.urdf"
         large_asset_options = gymapi.AssetOptions()
@@ -490,7 +483,6 @@ class HumanoidAeMcpPnn6(VecTask):
         pos = [
             # [-0.01, 0.0, 0.0],
             [2.5, 0.3051, 0.0]
-            #[0, 0, 0.0]
             # [ 0.0890016, -0.40830246, 0.25]
         ]
         for i, obj in enumerate(PERTURB_OBJS):
@@ -501,7 +493,7 @@ class HumanoidAeMcpPnn6(VecTask):
             # default_pose.p.z = pos[i][2]
             default_pose.p.x = pos[i][0]
             default_pose.p.y = pos[i][1]
-            default_pose.p.z = self.box_z_scale / 2
+            default_pose.p.z = pos[i][2]
             obj_type = obj[0]
             if obj_type == "small":
                 proj_asset = self._small_proj_asset
@@ -765,12 +757,151 @@ class HumanoidAeMcpPnn6(VecTask):
 
         self.reduce_action = cfg["env"].get("reduce_action", False)
         if self._masterfoot:
-            self.action_idx = [0,1,2,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,25,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,54,55,60,61,62,65,66,67,68,75,76,77,80,81,82,83,]
+            self.action_idx = [
+                0,
+                1,
+                2,
+                4,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                25,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45,
+                46,
+                47,
+                48,
+                49,
+                50,
+                51,
+                52,
+                54,
+                55,
+                60,
+                61,
+                62,
+                65,
+                66,
+                67,
+                68,
+                75,
+                76,
+                77,
+                80,
+                81,
+                82,
+                83,
+            ]
         else:
-            self.action_idx = [0,1,2,4,6,7,8,9,10,11,12,13,14,16,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36,37,42,43,44,47,48,49,50,57,58,59,62,63,64,65,]
+            self.action_idx = [
+                0,
+                1,
+                2,
+                4,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                16,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                36,
+                37,
+                42,
+                43,
+                44,
+                47,
+                48,
+                49,
+                50,
+                57,
+                58,
+                59,
+                62,
+                63,
+                64,
+                65,
+            ]
 
         disc_idxes = []
-        self._body_names_orig = ["Pelvis","L_Hip","L_Knee","L_Ankle","L_Toe","R_Hip","R_Knee","R_Ankle","R_Toe","Torso","Spine","Chest","Neck","Head","L_Thorax","L_Shoulder","L_Elbow","L_Wrist","L_Hand","R_Thorax","R_Shoulder","R_Elbow","R_Wrist","R_Hand",]
+        self._body_names_orig = [
+            "Pelvis",
+            "L_Hip",
+            "L_Knee",
+            "L_Ankle",
+            "L_Toe",
+            "R_Hip",
+            "R_Knee",
+            "R_Ankle",
+            "R_Toe",
+            "Torso",
+            "Spine",
+            "Chest",
+            "Neck",
+            "Head",
+            "L_Thorax",
+            "L_Shoulder",
+            "L_Elbow",
+            "L_Wrist",
+            "L_Hand",
+            "R_Thorax",
+            "R_Shoulder",
+            "R_Elbow",
+            "R_Wrist",
+            "R_Hand",
+        ]
         _body_names_orig_copy = self._body_names_orig.copy()
         if self.remove_toe_im:
             _body_names_orig_copy.remove("L_Toe")
@@ -787,7 +918,38 @@ class HumanoidAeMcpPnn6(VecTask):
         self._eval_bodies = _body_names_orig_copy  # default eval bodies
 
         if self._masterfoot:
-            self._body_names = ["Pelvis","L_Hip","L_Knee","L_Ankle","L_Toe","L_Toe_1","L_Toe_1_1","L_Toe_2","R_Hip","R_Knee","R_Ankle","R_Toe","R_Toe_1","R_Toe_1_1","R_Toe_2","Torso","Spine","Chest","Neck","Head","L_Thorax","L_Shoulder","L_Elbow","L_Wrist","L_Hand","R_Thorax","R_Shoulder","R_Elbow","R_Wrist","R_Hand",]
+            self._body_names = [
+                "Pelvis",
+                "L_Hip",
+                "L_Knee",
+                "L_Ankle",
+                "L_Toe",
+                "L_Toe_1",
+                "L_Toe_1_1",
+                "L_Toe_2",
+                "R_Hip",
+                "R_Knee",
+                "R_Ankle",
+                "R_Toe",
+                "R_Toe_1",
+                "R_Toe_1_1",
+                "R_Toe_2",
+                "Torso",
+                "Spine",
+                "Chest",
+                "Neck",
+                "Head",
+                "L_Thorax",
+                "L_Shoulder",
+                "L_Elbow",
+                "L_Wrist",
+                "L_Hand",
+                "R_Thorax",
+                "R_Shoulder",
+                "R_Elbow",
+                "R_Wrist",
+                "R_Hand",
+            ]
             self._body_to_orig = [
                 self._body_names.index(name) for name in self._body_names_orig
             ]
@@ -842,11 +1004,34 @@ class HumanoidAeMcpPnn6(VecTask):
 
         if self._masterfoot:
             self.limb_weight_group = [
-                ["L_Hip","L_Knee","L_Ankle","L_Toe","L_Toe_1","L_Toe_1_1","L_Toe_2",],
-                ["R_Hip","R_Knee","R_Ankle","R_Toe","R_Toe_1","R_Toe_1_1","R_Toe_2",],
+                [
+                    "L_Hip",
+                    "L_Knee",
+                    "L_Ankle",
+                    "L_Toe",
+                    "L_Toe_1",
+                    "L_Toe_1_1",
+                    "L_Toe_2",
+                ],
+                [
+                    "R_Hip",
+                    "R_Knee",
+                    "R_Ankle",
+                    "R_Toe",
+                    "R_Toe_1",
+                    "R_Toe_1_1",
+                    "R_Toe_2",
+                ],
                 ["L_Thorax", "L_Shoulder", "L_Elbow", "L_Wrist", "L_Hand"],
                 ["R_Thorax", "R_Shoulder", "R_Elbow", "R_Wrist", "R_Hand"],
-                ["Pelvis","Torso","Spine","Chest","Neck","Head",],
+                [
+                    "Pelvis",
+                    "Torso",
+                    "Spine",
+                    "Chest",
+                    "Neck",
+                    "Head",
+                ],
             ]
             self.limb_weight_group = [
                 [self._body_names.index(g) for g in group]
@@ -892,7 +1077,18 @@ class HumanoidAeMcpPnn6(VecTask):
             if name.startswith("R") and name[2:] in ["Hip", "Knee", "Ankle", "Toe"]
         ]
 
-        self.selected_group_jts_names = ["Pelvis","L_Hip","R_Hip","Torso","L_Ankle","R_Ankle","L_Elbow","R_Elbow","L_Hand","R_Hand",]
+        self.selected_group_jts_names = [
+            "Pelvis",
+            "L_Hip",
+            "R_Hip",
+            "Torso",
+            "L_Ankle",
+            "R_Ankle",
+            "L_Elbow",
+            "R_Elbow",
+            "L_Hand",
+            "R_Hand",
+        ]
         self.selected_group_jts = torch.tensor(
             [
                 self._body_names.index(jt_name)
@@ -901,11 +1097,121 @@ class HumanoidAeMcpPnn6(VecTask):
         )
 
         if self._masterfoot:
-            self.left_to_right_index = [0,8,9,10,11,12,13,14,1,2,3,4,5,6,7,15,16,17,18,19,25,26,27,28,29,20,21,22,23,24,]
-            self.left_to_right_index_action = [7,8,9,10,11,12,13,0,1,2,3,4,5,6,14,15,16,17,18,24,25,26,27,28,19,20,21,22,23,]
+            self.left_to_right_index = [
+                0,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                15,
+                16,
+                17,
+                18,
+                19,
+                25,
+                26,
+                27,
+                28,
+                29,
+                20,
+                21,
+                22,
+                23,
+                24,
+            ]
+            self.left_to_right_index_action = [
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                14,
+                15,
+                16,
+                17,
+                18,
+                24,
+                25,
+                26,
+                27,
+                28,
+                19,
+                20,
+                21,
+                22,
+                23,
+            ]
         else:
-            self.left_to_right_index = [0,5,6,7,8,1,2,3,4,9,10,11,12,13,19,20,21,22,23,14,15,16,17,18,]
-            self.left_to_right_index_action = [4,5,6,7,0,1,2,3,8,9,10,11,12,18,19,20,21,22,13,14,15,16,17,]
+            self.left_to_right_index = [
+                0,
+                5,
+                6,
+                7,
+                8,
+                1,
+                2,
+                3,
+                4,
+                9,
+                10,
+                11,
+                12,
+                13,
+                19,
+                20,
+                21,
+                22,
+                23,
+                14,
+                15,
+                16,
+                17,
+                18,
+            ]
+            self.left_to_right_index_action = [
+                4,
+                5,
+                6,
+                7,
+                0,
+                1,
+                2,
+                3,
+                8,
+                9,
+                10,
+                11,
+                12,
+                18,
+                19,
+                20,
+                21,
+                22,
+                13,
+                14,
+                15,
+                16,
+                17,
+            ]
 
         self._load_amass_gender_betas()
 
@@ -1034,7 +1340,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
             # return 3
         elif self.ae_type == "pvae":
-            actions = latent_dim * 0
+            actions = latent_dim
             if(self.gate_pvae):
                 actions += 5
             if(self.root_motion == False):
@@ -1047,9 +1353,9 @@ class HumanoidAeMcpPnn6(VecTask):
             if(self.gate_pvae):
                 actions += 5
             if(self.root_motion == False):
-                actions += 1 #root velocity magnitude
+                actions += 2 #root_xy
             if(self.root_dir_action):
-                actions +=1 #root yaw
+                actions +=1
             return (
                actions
             ) * num_agents  # root xyz edit + root rpy edit + latent space edit
@@ -1334,9 +1640,7 @@ class HumanoidAeMcpPnn6(VecTask):
         #     #self._num_self_obs = 19 + 144 + 144 + 19 #72 + 72  # red + blue guy observation
         #     self._num_self_obs = 144 
         # else:
-        #self._num_self_obs = 72 + 72 + 72 + 72 + 1 + 2 + 3 + 3 + 1
-        #15 for the key rbs
-        self._num_self_obs = len(key_collision_part_list) * 2 +10 + 4 + 80 # 8 for the box's bounding box
+        self._num_self_obs = 72 + 72 + 72 + 72 + 1 
 
         # Account for all agents
         self._num_self_obs *= num_agents
@@ -1810,22 +2114,141 @@ class HumanoidAeMcpPnn6(VecTask):
                 # thickness_vals = [1.0] * 24
                 if self._has_mesh:
                     if self._masterfoot:
-                        filter_ints = [0,1,96,192,192,192,192,192,192,192,1,384,288,288,288,288,288,288,288,1024,6,1560,0,512,0,20,0,0,0,0,10,0,0,0,]
+                        filter_ints = [
+                            0,
+                            1,
+                            96,
+                            192,
+                            192,
+                            192,
+                            192,
+                            192,
+                            192,
+                            192,
+                            1,
+                            384,
+                            288,
+                            288,
+                            288,
+                            288,
+                            288,
+                            288,
+                            288,
+                            1024,
+                            6,
+                            1560,
+                            0,
+                            512,
+                            0,
+                            20,
+                            0,
+                            0,
+                            0,
+                            0,
+                            10,
+                            0,
+                            0,
+                            0,
+                        ]
                     else:
-                        filter_ints = [0,1,224,512,384,1,1792,64,1056,4096,6,6168,0,2048,0,20,0,0,0,0,10,0,0,8192,]
+                        filter_ints = [
+                            0,
+                            1,
+                            224,
+                            512,
+                            384,
+                            1,
+                            1792,
+                            64,
+                            1056,
+                            4096,
+                            6,
+                            6168,
+                            0,
+                            2048,
+                            0,
+                            20,
+                            0,
+                            0,
+                            0,
+                            0,
+                            10,
+                            0,
+                            0,
+                            8192,
+                        ]
                 else:
                     if self._masterfoot:
                         # filter_ints = [0, 0, 3, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0, 12, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 32, 0, 48, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-                        filter_ints = [0,0,3,6,6,6,6,6,6,6,0,12,9,9,9,9,9,9,9,32,0,48,0,16,0,0,0,0,0,0,0,0,0,0,]
+                        filter_ints = [
+                            0,
+                            0,
+                            3,
+                            6,
+                            6,
+                            6,
+                            6,
+                            6,
+                            6,
+                            6,
+                            0,
+                            12,
+                            9,
+                            9,
+                            9,
+                            9,
+                            9,
+                            9,
+                            9,
+                            32,
+                            0,
+                            48,
+                            0,
+                            16,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                        ]
                     else:
                         filter_ints = np.array(
-                            [0,0,7,16,12,0,56,2,33,128,0,192,0,64,0,0,0,0,0,0,0,0,0,0,]
+                            [
+                                0,
+                                0,
+                                7,
+                                16,
+                                12,
+                                0,
+                                56,
+                                2,
+                                33,
+                                128,
+                                0,
+                                192,
+                                0,
+                                64,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                            ]
                         )
                         # zero_yes = filter_ints == 0
                         # to_put = 2 ** np.arange(np.sum(zero_yes))
                         # filter_ints[zero_yes] = to_put
                         # filter_ints[~zero_yes] *= to_put.max()
-                        #collision to the box. 1 is no collision between body parts and the box
                         filter_ints[:] = 0
                         filter_ints = filter_ints.tolist()
 
@@ -1922,14 +2345,6 @@ class HumanoidAeMcpPnn6(VecTask):
         self._box_pos = self._box_states[..., :3]
         self._box_rotation = self._box_states[..., 3:7]
 
-        bb_x = torch.tensor((self.box_x_scale/2 , 0), device=self.device)
-        bb_y = torch.tensor((0, self.box_y_scale/2 ), device=self.device)
-        self._box_xy_bb = torch.cat([
-            self._box_pos[..., :2] +  bb_x + bb_y,
-            self._box_pos[..., :2] +  bb_x - bb_y,
-            self._box_pos[..., :2] -  bb_x + bb_y,
-            self._box_pos[..., :2] -  bb_x - bb_y,
-        ], dim=-1).reshape(self.num_envs, 4, 2)
         self._box_actor_ids = self._humanoid_actor_ids + to_torch(
             self._proj_handles, dtype=torch.int32, device=self.device
         )
@@ -2039,7 +2454,7 @@ class HumanoidAeMcpPnn6(VecTask):
         # second_char_full_body_pos = self.ref_body_pos[:,24:,:].clone()
         # print(self.step_count)
 
-        
+        # NOTE: the compute reward is called after calculate observation, so the self.blue_obs and self.red_obs are valid
         chain_list_indecies = []
         chain_list = ["R_Thorax", "R_Shoulder", "R_Elbow", "R_Wrist", "R_Hand"]
         for i in chain_list:
@@ -2071,15 +2486,11 @@ class HumanoidAeMcpPnn6(VecTask):
     def _compute_reset(self):
         hand_idx = self._body_names.index("R_Hand")
         head_idx = self._body_names.index("Head")
-
-        key_part_indecies = []
-        for i in key_collision_part_list:
-            key_part_indecies.append(self._body_names.index(i))
         
         self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
             self.step_count,
-            key_part_indecies,
-            self._box_xy_bb,
+            hand_idx,
+            head_idx,
             self.reset_buf,
             self.progress_buf,
             self._contact_forces,
@@ -2130,23 +2541,13 @@ class HumanoidAeMcpPnn6(VecTask):
         # self.red_obs =  torch.cat([self.red_rb_root_xyz, self.red_rb_root_rot_sixd, self.red_rb_root_vel,
         #                         self.red_rb_root_ang_vel, self.red_sixd, self.red_joint_ang_vel], dim=-1)
         #else:
-        key_part_indecies = []
-        for i in key_collision_part_list:
-            key_part_indecies.append(self._body_names.index(i))
-        red_to_box = (self._box_xy_bb[..., :2].reshape(-1, 4, 2).repeat(1, len(key_part_indecies), 1) 
-                              - (self.red_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2]).repeat(1,4,1)).reshape(self.num_envs, -1)
-
-        blue_to_box = (self._box_xy_bb[..., :2].reshape(-1, 4, 2).repeat(1, len(key_part_indecies), 1) 
-                              - (self.blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2]).repeat(1,4,1)).reshape(self.num_envs, -1)
-        
-        self.blue_obs = torch.cat([blue_to_box,self.current_blue_root_yaw, self.blue_rb_root_xyz[...,:2]], dim=-1)
-        #self.blue_obs = torch.cat([ self.blue_rb_root_xyz], dim=-1)
-
-        red_key_rb = self.red_rb_xyz.reshape(-1,24,3)[:, key_part_indecies, :2].reshape(self.num_envs, -1)
-        #self.red_obs = torch.cat([red_key_rb, self._box_pos,  self._box_pos - self.red_rb_root_xyz,self.prev_red_rb_root_xyz,self.red_rb_root_xyz, self.red_xy_velocity, self.current_red_yaw_angles],dim=-1,)
-        self.red_obs = torch.cat([red_key_rb,red_to_box, self._box_pos[..., :2],  self._box_pos[..., :2] - self.red_rb_root_xyz[..., :2],
-                                  self.prev_red_rb_root_xyz[..., :2],self.red_rb_root_xyz[..., :2], self.red_xy_velocity, self.current_red_yaw_angles],dim=-1,)
-        #self.red_obs = torch.cat([ self.red_rb_root_xyz],dim=-1,)
+        self.blue_obs = torch.cat([ self.blue_rb_xyz, self.prev_blue_rb_xyz], dim=-1)
+        #self.red_obs = torch.cat([self.red_rb_xyz,],dim=-1,)
+        # self.red_obs = torch.cat([self._rigid_body_pos.reshape(self.num_envs, -1), 
+        #                           self.red_rb_xyz.reshape(self.num_envs, -1), 
+        #                           self._box_pos.reshape(self.num_envs, -1), 
+        #                         (self.red_rb_xyz.reshape(-1,24,3) - self._box_pos[...,None,:]).reshape(self.num_envs, -1),],dim=-1,)
+        self.red_obs = torch.cat([self.current_red_yaw_angles, self.red_rb_xyz,self.prev_red_rb_xyz],dim=-1,)
         #print(self.red_obs.shape)
 
         if env_ids is None:
@@ -2348,35 +2749,6 @@ class HumanoidAeMcpPnn6(VecTask):
             env_ids
         ].clone()
         self._reset_ref_state_init(env_ids)
-
-        if(self.random_box_pos and self.num_envs > 1):
-            # lets sample a random position for box position, after sampling for RSI
-            
-            motion_times = self._motion_lib.sample_time(self._sampled_motion_ids[env_ids].flatten().numpy())
-            motion_res = self._get_state_from_motionlib_cache(
-                self._sampled_motion_ids[env_ids].flatten(),
-                motion_times,
-                self._global_offset[env_ids].reshape(len(env_ids) * num_agents, 3),
-            )
-            if len(env_ids) == self.num_envs:
-
-                self._box_pos[:, :2] = motion_res["root_pos"][:, :2] * 1
-                #self._box_states[env_ids] = self._initial_box_states[env_ids].clone()
-            else:
-                self._box_pos[env_ids, :2] = motion_res["root_pos"][:, :2] * 1
-
-            #recalculate the bounding box
-            bb_x = torch.tensor((self.box_x_scale/2 , 0), device=self.device)
-            bb_y = torch.tensor((0, self.box_y_scale/2 ), device=self.device)
-            self._box_xy_bb = torch.cat([
-                self._box_pos[..., :2] +  bb_x + bb_y,
-                self._box_pos[..., :2] +  bb_x - bb_y,
-                self._box_pos[..., :2] -  bb_x + bb_y,
-                self._box_pos[..., :2] -  bb_x - bb_y,
-            ], dim=-1).reshape(self.num_envs, 4, 2)
-        else:
-            self._box_states[env_ids] = self._initial_box_states[env_ids].clone()
-            
         self._corrected_initial_humanoid_root_pos = self._humanoid_root_states.clone()[
             ..., 0:2
         ]
@@ -2389,7 +2761,7 @@ class HumanoidAeMcpPnn6(VecTask):
         # self._dof_pos[env_ids] = self._initial_dof_pos[env_ids].clone()
         # self._dof_vel[env_ids] = self._initial_dof_vel[env_ids].clone()
 
-        
+        self._box_states[env_ids] = self._initial_box_states[env_ids].clone()
 
         # self._set_env_state(
         #     env_ids=env_ids,
@@ -2507,7 +2879,6 @@ class HumanoidAeMcpPnn6(VecTask):
             self.prev_blue_rb_root_xyz = self.blue_rb_root_xyz * 1
             self.blue_rb_root_rot_sixd = rb_rot_sixd[:, 0] * 1
             self.blue_rb_root_vel = body_vel[:, 0] * 1
-            
             self.blue_rb_root_ang_vel = body_ang_vel[:, 0] * 1
             self.blue_sixd = rb_rot_sixd.reshape(self.num_envs * num_agents, -1) * 1
             self.blue_joint_ang_vel = body_ang_vel.reshape(self.num_envs * num_agents, -1) * 1
@@ -2515,12 +2886,8 @@ class HumanoidAeMcpPnn6(VecTask):
             self.ref_body_root_rot = rb_rot_sixd[:, 0] * 1
 
             if(self.calc_root_dir):
-                self.prev_red_yaw_angles = (root_yaw % (2* np.pi)) *1
-                self.current_red_yaw_angles = (root_yaw % (2* np.pi)) * 1
-                self.current_blue_root_yaw =(root_yaw % (2* np.pi)) *1
-                self.prev_blue_root_yaw =(root_yaw % (2* np.pi)) *1
-
-            self.red_xy_velocity = self.blue_rb_root_vel[...,:2] * 1
+                self.prev_red_yaw_angles = root_yaw *1
+                self.current_red_yaw_angles = root_yaw * 1
             self.red_rb_xyz = self.blue_rb_xyz * 1
             self.prev_red_rb_xyz = self.red_rb_xyz * 1
             self.prev_red_rb_root_xyz = self.blue_rb_root_xyz * 1
@@ -2539,10 +2906,8 @@ class HumanoidAeMcpPnn6(VecTask):
             self.red_dof_pos[env_ids] = self.blue_dof_pos[env_ids] * 1
 
             if(self.calc_root_dir):
-                self.prev_red_yaw_angles[env_ids] = (root_yaw % (2* np.pi)) *1
-                self.current_red_yaw_angles[env_ids] = (root_yaw % (2* np.pi))* 1
-                self.current_blue_root_yaw[env_ids] = (root_yaw % (2* np.pi)) * 1 
-                self.prev_blue_root_yaw[env_ids] = (root_yaw % (2* np.pi)) * 1 
+                self.prev_red_yaw_angles[env_ids] = root_yaw *1
+                self.current_red_yaw_angles[env_ids] = root_yaw * 1
 
             self.blue_rb_xyz[env_ids] = rb_pos.reshape(env_ids.shape[0] * num_agents, -1) * 1
             self.prev_blue_rb_xyz[env_ids] = self.blue_rb_xyz[env_ids]
@@ -2559,9 +2924,6 @@ class HumanoidAeMcpPnn6(VecTask):
             if(self.ae_type == 'pvae'):
                 self.red_latent[env_ids] = self.blue_latent[env_ids]* 1
                 self.red_sixd_inv[env_ids] = self.blue_sixd_inv[env_ids]* 1
-
-            self.red_xy_velocity[env_ids] = self.blue_rb_root_vel[env_ids, :2]* 1
-
             self.red_rb_xyz[env_ids] = self.blue_rb_xyz[env_ids]* 1
             self.prev_red_rb_xyz[env_ids] = self.blue_rb_xyz[env_ids]* 1
             self.prev_red_rb_root_xyz[env_ids] = self.blue_rb_root_xyz[env_ids]* 1
@@ -3424,10 +3786,16 @@ class HumanoidAeMcpPnn6(VecTask):
 
 
         xs = motion_res["dof_pos"]
+        # xs = torch.tensor(xs, dtype=torch.float, device=self.device)
         xs = xs.reshape(xs.shape[0],23, -1)
 
         # raw_ys for root position and orientation that ignores any kind of invariance snapping
-        raw_ys = torch.cat([motion_res["rg_pos"].reshape(-1, 24, 3)[:, 0],],dim=-1,)  # original yaw and xy included
+        raw_ys = torch.cat(
+            [
+                motion_res["rg_pos"].reshape(-1, 24, 3)[:, 0],
+            ],
+            dim=-1,
+        )  # original yaw and xy included
 
         self.prev_blue_rb_root_xyz = self.blue_rb_root_xyz * 1
         self.blue_rb_root_xyz = motion_res["rg_pos"][:, 0] * 1
@@ -3443,7 +3811,14 @@ class HumanoidAeMcpPnn6(VecTask):
         )
         self.blue_latent = mu * 1
         
-        ###latent_edit = self.input_lats[..., :latent_dim]
+        latent_edit = self.input_lats[..., :latent_dim]
+        if(self.gate_pvae):
+            gates = self.input_lats[..., -5:]
+            
+            gates = (torch.abs(gates) > 0.5).float()
+            gates = torch.repeat_interleave(gates, torch.tensor([4,3,4,4,4], device = self.device), dim = -1)
+            latent_edit *= gates
+
         edited_ys = raw_ys * 1
         #z = mu * 1
         #z[..., 11:] += 10 * latent_edit[..., 11:]
@@ -3451,13 +3826,13 @@ class HumanoidAeMcpPnn6(VecTask):
         coef = [ 1.        ,  1.39494009,  1.94585785,  2.71435512,  3.78636278,
         5.28174923,  7.36772374, 10.27753321, 14.33654309, 19.9986187 ]
         #NOTE ignores lower body
-        ###latent_edit[..., :11] = latent_edit[..., :11] * 0
+        latent_edit[..., :11] = latent_edit[..., :11] * 0
 
-        #NOTE: ignore pose generation for the first part
-        ###z = 0 * input_lats_importance * latent_edit + input_my_lats_importance * mu
-        z = mu
+        #print(self.sweep1)
+        z = coef[3] * input_lats_importance * latent_edit + input_my_lats_importance * mu
+        
         self.red_latent = z * 1
-
+        #z[..., 6:] =  input_lats_importance * latent_edit[..., 6:]
         current_start = 0
         decodeds=[]
         for index, hs in enumerate(self.ae.hammer_size):
@@ -3470,55 +3845,59 @@ class HumanoidAeMcpPnn6(VecTask):
 
         pose_quat = Rotation.from_rotvec(cvae_decoded.reshape(-1, 3)).as_quat().reshape(-1, 23, 4)
         root_rot = motion_res["root_rot"]
+
         
         if(self.calc_root_dir):
+            heading_direction = self.red_rb_root_xyz - self.prev_red_rb_root_xyz
+            heading_vectors = heading_direction/ heading_direction.norm(dim=-1, keepdim=True)
+            # Compute the yaw angles (arctan2(y, x) gives the angle in the xy-plane)
+            
             root_yaw =  torch.tensor(Rotation.from_quat(root_rot).as_euler('zyx')[...,[0]], dtype=torch.float, device=self.device)
-            self.prev_blue_root_yaw = self.current_blue_root_yaw * 1
-            self.current_blue_root_yaw = root_yaw % (2* np.pi) #root_yaw
-            self.prev_red_yaw_angles = (self.current_red_yaw_angles % (2* np.pi)) * 1
+            self.prev_red_yaw_angles = self.current_red_yaw_angles
             if(self.root_dir_action):
                # self.current_red_yaw_angles =  root_yaw + self.input_lats[...,latent_dim+2:] 
-                c = [0.01      , 0.01668101, 0.02782559, 0.04641589, 0.07742637, 0.12915497, 0.21544347, 0.35938137, 0.59948425, 1.        ]
-                self.current_red_yaw_angles +=  1 * self.input_lats[...,[-1]]
-                self.current_red_yaw_angles = (self.current_red_yaw_angles % (2* np.pi))
-                #self.current_red_yaw_angles = root_yaw
+                self.current_red_yaw_angles +=  self.input_lats[...,latent_dim+2:] 
             else:
-                heading_direction = self.red_rb_root_xyz - self.prev_red_rb_root_xyz
-                heading_vectors = heading_direction/ heading_direction.norm(dim=-1, keepdim=True)
-                # Compute the yaw angles (arctan2(y, x) gives the angle in the xy-plane)
                 self.current_red_yaw_angles = torch.atan2(heading_vectors[:, 1], heading_vectors[:, 0]).reshape(-1,1)
 
-                
-                nan_mask = torch.isnan(self.current_red_yaw_angles)
-                nan_rows = nan_mask.any(dim=1)
-                self.current_red_yaw_angles[nan_rows] = root_yaw[nan_rows] % (2* np.pi) 
+            nan_mask = torch.isnan(self.current_red_yaw_angles)
+            nan_rows = nan_mask.any(dim=1)
+            self.current_red_yaw_angles[nan_rows] = root_yaw[nan_rows]
             
             # Create the rotation matrices and quaternions using only the yaw angles
             rotations = Rotation.from_euler('z', self.current_red_yaw_angles.numpy())
-            quaternions = torch.tensor(rotations.as_quat(), dtype=torch.float, device=self.device)
-            pose_quat = np.concatenate([quaternions[:, None, :], pose_quat], axis=1)
 
+            quaternions = torch.tensor(rotations.as_quat(), dtype=torch.float, device=self.device)
+            
+            
+            pose_quat = np.concatenate([quaternions[:, None, :], pose_quat], axis=1)
         else:
             pose_quat = np.concatenate([root_rot[:, None, :], pose_quat], axis=1)
+
+        current_root = self.red_rb_root_xyz
+        changed_root = current_root * 1
         
         if(self.calc_root_dir):
             x_components = torch.cos( self.current_red_yaw_angles )
             y_components = torch.sin( self.current_red_yaw_angles )
+    
             direction_vectors = torch.concatenate((x_components, y_components), dim=-1)
-            
-            #vel_mag = torch.norm (self.blue_rb_root_vel[..., :2], dim=-1).reshape(-1,1) + self.input_lats[...,[-2]]
-            #TODO is delta_t needed? give the fact that the simulation time step is going to be a fixed value
-            self.red_xy_velocity = self.input_lats[...,[-2]] * direction_vectors
-            #self.red_xy_velocity =vel_mag* direction_vectors * 0.0166666
+            # direction_vectors[..., 0] = 1
+            # direction_vectors[...,1] = 0
+            c = [0.01      , 0.01668101, 0.02782559, 0.04641589, 0.07742637, 0.12915497, 0.21544347, 0.35938137, 0.59948425, 1.        ]
+
+            self.input_lats[...,latent_dim:latent_dim+2] = c[9] * torch.abs(self.input_lats[...,latent_dim:latent_dim+2]) * direction_vectors
 
 
-        current_root = self.red_rb_root_xyz
-        changed_root = current_root * 1
+        
+        if(self.gate_pvae):
+            #Note not working if we have root_dir_action
+            changed_root[..., :2] += self.input_lats[...,-7:-5] 
+        elif (not self.root_motion):
+            changed_root[..., :2] += self.input_lats[...,latent_dim:latent_dim+2] 
 
         if(self.root_motion):
             changed_root = motion_res["root_pos"]
-        else:
-            changed_root[..., :2] += self.red_xy_velocity
 
         edited_ys[..., :3] = changed_root * 1
         recon_sk_state = SkeletonState.from_rotation_and_root_translation(
@@ -3535,6 +3914,12 @@ class HumanoidAeMcpPnn6(VecTask):
         self.blue_rb_xyz = motion_res["rg_pos"].reshape(self.num_envs * num_agents, -1)
         self.blue_rb_rot = motion_res["rb_rot"].reshape(self.num_envs * num_agents, -1)
         self.ref_body_pos = cvae_decoded_with_yaw
+
+        # Use these as stateful features
+        self.ref_body_root_pos = edited_ys[
+            ..., :3
+        ]  # TODO this is not used anywhjere but isn't the actual root pose cvae_decoded_with_yaw[..., 0, :3] ? does it matter?
+        #self.ref_body_root_rot = good_sixd
 
 
         self.prev_red_rb_root_xyz = self.red_rb_root_xyz.clone()
@@ -4034,9 +4419,6 @@ class HumanoidAeMcpPnn6(VecTask):
         self.new_cam_pos_vis = (
             2.6125659942626953, -5.503269195556641, 1.7383817434310913
         )
-
-        #2.6125659942626953, -5.503269195556641, 1.7383817434310913 - (2.5, 0.3051, 0.0)
-        #self.new_cam_pos_vis = (self._box_pos[0,0], self._box_pos[0,1], 1.73)
         self.new_cam_pos_vis2 = (16.250212, -7.945037, 6.500098)
         self.new_cam_target_vis2 =  (2.500003, 0.305096, 1.000000)
         #print(self.new_cam_pos_vis)
@@ -4375,56 +4757,60 @@ def compute_humanoid_reward(
 
 ):
     # type: (Object, Tensor,Tensor,Tensor,Tensor,Tensor,Tensor, Tensor,Tensor, int, int) -> Tensor
-
-
-    # box_distance_to_blue = (box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)- blue_rb_pos.reshape(-1, 24, 3)[:, 1:, :2])
-    # box_distance_to_blue_norm = torch.norm(box_distance_to_blue, dim=-1)
-    # max = torch.max(box_distance_to_blue_norm, dim=-1).values
-    # min = torch.min(box_distance_to_blue_norm, dim=-1).values
-    # min_idx = torch.min(box_distance_to_blue_norm, dim=-1).indices
-    # diff = (max-min).reshape(max.shape[0], 1)
-    # distance_weight_mat = (max[:, None] - box_distance_to_blue_norm ) / diff
-
-    # k1 = -1.3
-    # box_distance_delta_xyz = (
-    #     box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
-    #     - red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2]
-    # )
-    # box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1) 
-    # box_distance_norm_weighted = box_distance_norm * distance_weight_mat
-    # box_distance_sum = torch.sum(box_distance_norm_weighted, dim=-1) # the bigger the sum, the better the reward
-    # box_distance_sum_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_sum**2))
+    # # root_velocity = (red_rb_root_xyz - prev_red_rb_root_xyz) / 0.01666666666
+    # # target_x_velocity = torch.tensor([[1.0, 0.0, 0.0]], device=red_rb_root_xyz.device)
+    # # velocity_norm = torch.linalg.norm(root_velocity - target_x_velocity, dim=-1)
+    # # velocity_reward = torch.clip((60 - velocity_norm) / 60, 0, 1)
     
-    # self.plot_scaler("custom/box_distance_sum",torch.mean(box_distance_sum),self.step_count,)
-    # self.plot_scaler("reward/box_distance_sum_reward",torch.mean(box_distance_sum_reward),self.step_count,)
+    box_distance_mse_loss = torch.nn.functional.mse_loss(
+        box_pos[..., :2], _rigid_body_pos[..., :2], reduction="none"
+    )
 
-    #['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+    box_distance_loss_result = torch.mean(box_distance_mse_loss, dim=1)
+    k1 = 1
+    box_distance_reward = 1 - torch.exp(-1 * (10**k1) * box_distance_loss_result)
 
-    # NOTE: the compute reward is called after calculate observation, so the self.blue_obs and self.red_obs are valid
-    key_part_indecies = []
+    # self.plot_scaler(
+    #             "custom/box_distance_loss_result",
+    #             torch.mean(box_distance_loss_result),
+    #             self.step_count,
+    #         )
+
+    # self.plot_scaler(
+    #             "reward/box_distance_reward",
+    #             torch.mean(box_distance_reward),
+    #             self.step_count,
+    #         )
+    box_distance_to_blue = (box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)- blue_rb_pos.reshape(-1, 24, 3)[:, 1:, :2])
+    box_distance_to_blue_norm = torch.norm(box_distance_to_blue, dim=-1)
+    max = torch.max(box_distance_to_blue_norm, dim=-1).values
+    min = torch.min(box_distance_to_blue_norm, dim=-1).values
+    min_idx = torch.min(box_distance_to_blue_norm, dim=-1).indices
+    diff = (max-min).reshape(max.shape[0], 1)
+    distance_weight_mat = (max[:, None] - box_distance_to_blue_norm ) / diff
+
+    k1 = -1.3
+    box_distance_delta_xyz = (
+        box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
+        - red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2]
+    )
+    box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1) 
+    box_distance_norm_weighted = box_distance_norm * distance_weight_mat
+    box_distance_sum = torch.sum(box_distance_norm_weighted, dim=-1) # the bigger the sum, the better the reward
+    box_distance_sum_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_sum**2))
     
-    for i in key_collision_part_list:
-        key_part_indecies.append(self._body_names.index(i))
+    self.plot_scaler("custom/box_distance_sum",torch.mean(box_distance_sum),self.step_count,)
+    self.plot_scaler("reward/box_distance_sum_reward",torch.mean(box_distance_sum_reward),self.step_count,)
 
-    '''
-    k1 = 1.3
-    #box_distance_delta_xyz = (box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)- red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2])
-    box_distance_delta_xyz = (box_pos[..., :2].reshape(-1, 1, 2).repeat(1, len(key_part_indecies), 1) - red_rb_pos.reshape(-1, 24, 3)[:, key_part_indecies, :2])
+    
+    k1 = 0.75
+    box_distance_delta_xyz = (
+        box_pos[..., :2].reshape(-1, 1, 2).repeat(1, 23, 1)
+        - red_rb_pos.reshape(-1, 24, 3)[:, 1:, :2]
+    )
     box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1)
     box_distance_min = torch.min(box_distance_norm, dim=-1).values
     box_distance_min_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_min**2))
-    '''
-
-
-    k1 = 1.5
-    box_distance_delta_xyz = (self._box_xy_bb[..., :2].reshape(-1, 4, 2).repeat(1, len(key_part_indecies), 1) 
-                              - (red_rb_pos.reshape(-1, 24, 3)[:, key_part_indecies, :2]).repeat(1,4,1))
-    box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1)
-    box_distance_min = torch.min(box_distance_norm, dim=-1).values
-    box_distance_min_reward = 1 - torch.exp(-1 * (10**k1) * (box_distance_min**2))
-
-    #calculate box distance based on box bounding box!
-    
 
     self.plot_scaler("custom/box_distance_min",torch.mean(box_distance_min),self.step_count,)
     self.plot_scaler("reward/box_distance_min_reward",torch.mean(box_distance_min_reward),self.step_count,)
@@ -4449,9 +4835,9 @@ def compute_humanoid_reward(
 
     self.plot_scaler("custom/delta_root_xyz_mean_norm", torch.mean(delta_root_xyz_mean_norm), self.step_count,)
     self.plot_scaler("reward/delta_root_xyz_mean_norm_reward",torch.mean(delta_root_xyz_mean_norm_reward), self.step_count,)
-    #self.plot_scaler("custom/box_heigh", torch.mean(-10 *box_pos[...,2]), self.step_count,)
+    self.plot_scaler("custom/box_heigh", torch.mean(-10 *box_pos[...,2]), self.step_count,)
 
-    k4=1.65
+    k4=1.3
     red_velocity_mag = torch.norm((red_rb_root_xyz - prev_red_rb_root_xyz), dim = -1)
     blue_velocity_mag = torch.norm((blue_rb_root_xyz - prev_blue_rb_root_xyz), dim = -1)
     velocity_mag_distance = red_velocity_mag - blue_velocity_mag
@@ -4462,14 +4848,6 @@ def compute_humanoid_reward(
         yaw_delta = self.current_red_yaw_angles[...,0] - self.prev_red_yaw_angles[...,0]
         yaw_reward = 1e0 * torch.exp(-1 * (10**k5) * (yaw_delta**2))
     # print(yaw_reward)
-
-    
-    k6 = 0
-    yaw_distance = self.current_red_yaw_angles[...,0] - self.current_blue_root_yaw[...,0]
-    yaw_distance_reward =  1e0 * torch.exp(-1 * (10**k6) * (yaw_distance**2))
-
-    k7 = 3
-    yaw_action_mag_reward = 1e0 * torch.exp(-1 * (10**k7) * ((self.input_lats[...,-1])**2))
     
     self.plot_scaler("custom/velocity_mag_distance", torch.mean(velocity_mag_distance), self.step_count,)
 
@@ -4478,8 +4856,8 @@ def compute_humanoid_reward(
     self.plot_scaler( "reward/root_and_box_reward",torch.mean(delta_root_xyz_mean_norm_reward).item() + torch.mean(box_distance_min_reward).item(),self.step_count,)
     
     if(self.num_envs == 1):
-        # self.easy_plot.add_point(self.step_count, torch.mean(box_distance_sum).item(), 'box_distance_sum')
-        # self.easy_plot.add_point(self.step_count, torch.mean(box_distance_sum_reward).item(), 'box_distance_sum_reward')
+        self.easy_plot.add_point(self.step_count, torch.mean(box_distance_sum).item(), 'box_distance_sum')
+        self.easy_plot.add_point(self.step_count, torch.mean(box_distance_sum_reward).item(), 'box_distance_sum_reward')
         self.easy_plot.add_point(self.step_count, torch.mean(box_distance_min).item(), 'box_distance_min')
         self.easy_plot.add_point(self.step_count, torch.mean(box_distance_min_reward).item(), 'box_distance_min_reward')
         self.easy_plot.add_point(self.step_count, torch.mean(imitation_inv_mean_norm).item(), 'imitation_inv_mean_norm')
@@ -4487,52 +4865,36 @@ def compute_humanoid_reward(
 
         self.easy_plot.add_point(self.step_count, torch.mean(delta_root_xyz_mean_norm).item(), 'delta_root_xyz_mean_norm')
         self.easy_plot.add_point(self.step_count, torch.mean(delta_root_xyz_mean_norm_reward).item(), 'delta_root_xyz_mean_norm_reward')
-        #self.easy_plot.add_point(self.step_count, torch.mean(-10 *box_pos[...,2]).item(), 'box_heigh')
+        self.easy_plot.add_point(self.step_count, torch.mean(-10 *box_pos[...,2]).item(), 'box_heigh')
         self.easy_plot.add_point(self.step_count, torch.mean(velocity_mag_distance).item(), 'velocity_mag_distance')
         self.easy_plot.add_point( self.step_count, torch.mean(velocity_reward).item(), 'velocity_reward')
-        self.easy_plot.add_point( self.step_count, torch.mean(red_velocity_mag /0.016666).item(), 'red_velocity_mag')
-        self.easy_plot.add_point( self.step_count, torch.mean(blue_velocity_mag/0.016666).item(), 'blue_velocity_mag')
-        self.easy_plot.add_point( self.step_count, torch.mean(self.input_lats[...,-2]).item(), 'red_velocity_mag_action')
-        self.easy_plot.add_point( self.step_count, torch.mean(self.input_lats[...,-1]).item(), 'red_yaw_action')
-        self.easy_plot.add_point( self.step_count, torch.mean(self.current_red_yaw_angles).item(), 'current_red_yaw')
-        self.easy_plot.add_point( self.step_count, torch.mean(self.current_blue_root_yaw).item(), 'current_blue_yaw')
-        self.easy_plot.add_point( self.step_count, torch.mean(yaw_distance).item(), 'yaw_distance')
-        self.easy_plot.add_point( self.step_count, torch.mean(yaw_distance_reward).item(), 'yaw_distance_reward')
-        self.easy_plot.add_point( self.step_count, torch.mean(self.red_xy_velocity).item(), 'red_xy_velocity')
-        self.easy_plot.add_point( self.step_count, torch.mean(yaw_action_mag_reward).item(), 'yaw_action_mag_reward')
-
-        
-
-        # if(self.calc_root_dir):
-        #     self.easy_plot.add_point( self.step_count, torch.mean(yaw_delta).item(), 'yaw_delta')
-        #     self.easy_plot.add_point( self.step_count, torch.mean(yaw_reward).item(), 'yaw_reward')
+        if(self.calc_root_dir):
+            self.easy_plot.add_point( self.step_count, torch.mean(yaw_delta).item(), 'yaw_delta')
+            self.easy_plot.add_point( self.step_count, torch.mean(yaw_reward).item(), 'yaw_reward')
         self.easy_plot.add_point( self.step_count, torch.mean(delta_root_xyz_mean_norm_reward).item() + torch.mean(box_distance_min_reward).item(), 'root_and_box_reward')
-        if(self.step_count % 50 == 0):
+        if(self.step_count % 100 == 0):
             print(self.step_count)
-            self.easy_plot.plot(self.writer, self.epoch_count)
         if(self.step_count == self.max_episode_length - 1):
             print(self.step_count)
             self.easy_plot.plot(self.writer, self.epoch_count)
 
     coeff = [ 0.1       ,  0.16681005,  0.27825594,  0.46415888,  0.77426368,1.29154967,  2.15443469,  3.59381366,  5.9948425 , 10.        ]
     reward = (
-        #1 * imitation_inv_reward
-        coeff[7]* delta_root_xyz_mean_norm_reward
-        + 6 * yaw_distance_reward
-        +  1 * box_distance_min_reward
-        + 0.2782559 * velocity_reward
-        + 3.59381366 * yaw_action_mag_reward
+        1 * imitation_inv_reward
+        + 3 * delta_root_xyz_mean_norm_reward
+        +  2 * box_distance_min_reward
+        + 2 * velocity_reward
         #+ yaw_reward
     )
     return reward
 
 
 
-#@torch.jit.script
+@torch.jit.script
 def compute_humanoid_reset(
     step_count,
-    key_part_indecies,
-    _box_xy_bb,
+    hand_idx,
+    head_idx,
     reset_buf,
     progress_buf,
     contact_buf,
@@ -4550,7 +4912,7 @@ def compute_humanoid_reset(
     max_episode_length,
     enable_early_termination,
 ):
-    # type: (int, List[int],Tensor, Tensor, Tensor,Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor, Tensor,Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
+    # type: (int, int,int, Tensor, Tensor,Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor,Tensor, Tensor, Tensor,Tensor, Tensor, float, bool) -> Tuple[Tensor, Tensor]
     terminated = torch.zeros_like(reset_buf)
     # enable_early_termination
     if enable_early_termination:
@@ -4580,7 +4942,7 @@ def compute_humanoid_reset(
         terminated = torch.where(has_fallen, torch.ones_like(reset_buf), terminated)
 
 
-        delta = blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2] - red_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2]
+        delta = blue_rb_xyz.reshape(-1, 24, 3) - red_rb_xyz.reshape(-1, 24, 3)
         delta_mean_norm = torch.mean(torch.norm(delta, dim=-1), dim=-1)
         # target_x_axis = torch.tensor([[1.0, 0.0, 0.0]], device=blue_rb_xyz.device)
         # cossim_x = torch.cosine_similarity(
@@ -4611,23 +4973,7 @@ def compute_humanoid_reset(
         delta_root_xyz = (red_rb_xyz.reshape(-1, 24, 3)[:,[0]]- blue_rb_xyz.reshape(-1, 24, 3)[:,[0]])
         delta_root_xyz_mean_norm = torch.mean(torch.norm(delta_root_xyz, dim=-1), dim=-1)
 
-        box_distance_delta_xyz = (_box_xy_bb[..., :2].reshape(-1, 4, 2).repeat(1, len(key_part_indecies), 1) 
-                        - (blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2]).repeat(1,4,1))
-        box_distance_norm = torch.norm(box_distance_delta_xyz, dim=-1)
-        box_distance_norm_min = torch.min(box_distance_norm, dim=-1).values
-        offset = 1.1
-        
-        terminated |= ((delta_mean_norm > 0.8) & (box_distance_norm_min > 1))
-        #terminated |= delta_mean_norm > torch.min(torch.ones_like(box_distance_norm_min), box_distance_norm_min + offset)
-
-        # we are calculating distance to the center of the box. If the distance is less than x_width/2 or y_width/2 -> colliding with the box!
-        # TODO do not hard code 0.15. use x_width and y_with of the box!
-        br_distance_delta_xyz = (_box_pos[..., :2].reshape(-1, 1, 2).repeat(1, len(key_part_indecies), 1) 
-                        - (red_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2]))
-        br_distance_norm = torch.norm(br_distance_delta_xyz, dim=-1)
-        br_distance_norm_min = torch.min(br_distance_norm, dim=-1).values
-        terminated |= br_distance_norm_min < 0.15 
-
+        terminated |= delta_mean_norm > 0.8
         #terminated = test > 1
         animation_ended = current_motion_times > _motion_lengths
         #terminated |= animation_ended.squeeze(-1)

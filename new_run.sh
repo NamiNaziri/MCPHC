@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#SBATCH --time=00:30:00
+#SBATCH --time=00:50:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32gb
 #SBATCH --gres=gpu:1

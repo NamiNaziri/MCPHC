@@ -62,8 +62,8 @@ class MyPlayer(players.PpoPlayerContinuous):
         self.pl.add_mesh(
             pv.Cube(center=(0, 0, -0.5), x_length=100, y_length=100), color="white"
         )
-        self.pl.add_mesh(
-            pv.Cube(center=(2.5, 0.3051, 0.0), x_length=0.3, y_length=0.3, z_length=2),
+        self.box_vis = self.pl.add_mesh(
+            pv.Cube(center=(2.5, 0.3051, 1.0), x_length=0.3, y_length=0.3, z_length=2),
             color="black",
         )
         self.pl.add_axes()
@@ -175,6 +175,10 @@ class MyPlayer(players.PpoPlayerContinuous):
                     dim=-1,
                 )
                 heading_cossims.append(heading_cossim)
+
+                # box_m = np.eye(4)
+                # box_m[:3, 3] = self.env._box_pos[0]
+                # self.box_vis.user_matrix = box_m
 
                 for i in range(24):
                     blue_actor = self.blue_actors[i]
@@ -343,32 +347,32 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 movie_path = os.path.join(
                                     self.summaries_dir, "movie.mp4"
                                 )
-                                # w = imageio.get_writer(
-                                #     movie_path,
-                                #     format="FFMPEG",
-                                #     mode="I",
-                                #     fps=15,
-                                #     codec="h264",
-                                #     pixelformat="yuv420p",
-                                # )
-                                # for img in imgs:
-                                #     w.append_data(img)
-                                # w.close()
+                                w = imageio.get_writer(
+                                    movie_path,
+                                    format="FFMPEG",
+                                    mode="I",
+                                    fps=15,
+                                    codec="h264",
+                                    pixelformat="yuv420p",
+                                )
+                                for img in imgs:
+                                    w.append_data(img)
+                                w.close()
 
-                                # green_movie_path = os.path.join(
-                                #     self.summaries_dir, "movie_greenOnly.mp4"
-                                # )
-                                # w = imageio.get_writer(
-                                #     green_movie_path,
-                                #     format="FFMPEG",
-                                #     mode="I",
-                                #     fps=15,
-                                #     codec="h264",
-                                #     pixelformat="yuv420p",
-                                # )
-                                # for img in imgs_green_only:
-                                #     w.append_data(img)
-                                # w.close()
+                                green_movie_path = os.path.join(
+                                    self.summaries_dir, "movie_greenOnly.mp4"
+                                )
+                                w = imageio.get_writer(
+                                    green_movie_path,
+                                    format="FFMPEG",
+                                    mode="I",
+                                    fps=15,
+                                    codec="h264",
+                                    pixelformat="yuv420p",
+                                )
+                                for img in imgs_green_only:
+                                    w.append_data(img)
+                                w.close()
                                 
                                 
                                 nvid1 = np.stack(imgs)[None]
