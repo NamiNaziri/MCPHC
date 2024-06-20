@@ -3443,7 +3443,7 @@ class HumanoidAeMcpPnn6(VecTask):
         )
         self.blue_latent = mu * 1
         
-        ###latent_edit = self.input_lats[..., :latent_dim]
+        latent_edit = self.input_lats[..., :latent_dim]
         edited_ys = raw_ys * 1
         #z = mu * 1
         #z[..., 11:] += 10 * latent_edit[..., 11:]
@@ -3451,11 +3451,11 @@ class HumanoidAeMcpPnn6(VecTask):
         coef = [ 1.        ,  1.39494009,  1.94585785,  2.71435512,  3.78636278,
         5.28174923,  7.36772374, 10.27753321, 14.33654309, 19.9986187 ]
         #NOTE ignores lower body
-        ###latent_edit[..., :11] = latent_edit[..., :11] * 0
+        latent_edit[..., :11] = latent_edit[..., :11] * 0
 
         #NOTE: ignore pose generation for the first part
-        ###z = 0 * input_lats_importance * latent_edit + input_my_lats_importance * mu
-        z = mu
+        z = coef[9] * input_lats_importance * latent_edit + input_my_lats_importance * mu
+        ###z = mu
         self.red_latent = z * 1
 
         current_start = 0
