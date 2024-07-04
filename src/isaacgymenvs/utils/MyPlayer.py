@@ -42,7 +42,7 @@ class MyPlayer(players.PpoPlayerContinuous):
         checkpoint_path = self.env.cfg["checkpoint"]
         parts = checkpoint_path.split("/")
         index_runs = parts.index("runs")
-        self.experiment_name = parts[index_runs + 1]
+        self.experiment_name = '/'.join(parts[index_runs + 1:-2])
 
         d = torch.load(checkpoint_path)
         self.last_checkpoint = d["epoch"]
@@ -63,7 +63,12 @@ class MyPlayer(players.PpoPlayerContinuous):
             pv.Cube(center=(0, 0, -0.5), x_length=100, y_length=100), color="white"
         )
         self.box_vis = self.pl.add_mesh(
-            pv.Cube(center=(2.5, 0.3051, 1.0), x_length=0.3, y_length=0.3, z_length=2),
+            pv.Cube(center=(2, 0.3051, 0), x_length=0.3, y_length=15, z_length=0.4),
+            color="black",
+        )
+
+        self.box_vis2 = self.pl.add_mesh(
+            pv.Cube(center=(0, 0.3051, 0), x_length=0.3, y_length=15, z_length=0.4),
             color="black",
         )
         self.pl.add_axes()
@@ -345,7 +350,7 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 # single_rotating_images = [[] for _ in range(8)]
                                 
                                 movie_path = os.path.join(
-                                    self.summaries_dir, "movie.mp4"
+                                    self.summaries_dir, f'movie_{self.last_checkpoint}.mp4'
                                 )
                                 w = imageio.get_writer(
                                     movie_path,
@@ -360,7 +365,7 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 w.close()
 
                                 green_movie_path = os.path.join(
-                                    self.summaries_dir, "movie_greenOnly.mp4"
+                                    self.summaries_dir, f'movie_greenOnly_{self.last_checkpoint}.mp4'
                                 )
                                 w = imageio.get_writer(
                                     green_movie_path,
@@ -375,25 +380,25 @@ class MyPlayer(players.PpoPlayerContinuous):
                                 w.close()
                                 
                                 
-                                nvid1 = np.stack(imgs)[None]
-                                # TODO uncomment this
-                                self.writer.add_video(
-                                    "Video/Full",
-                                    nvid1,
-                                    self.last_checkpoint,
-                                    dataformats="NTHWC",
-                                    fps=15,
-                                )
+                                # # nvid1 = np.stack(imgs)[None]
+                                # # # TODO uncomment this
+                                # # self.writer.add_video(
+                                # #     "Video/Full",
+                                # #     nvid1,
+                                # #     self.last_checkpoint,
+                                # #     dataformats="NTHWC",
+                                # #     fps=15,
+                                # # )
 
-                                nvid2 = np.stack(imgs_green_only)[None]
-                                # TODO uncomment this
-                                self.writer.add_video(
-                                    "Video/GreenOnly",
-                                    nvid2,
-                                    self.last_checkpoint,
-                                    dataformats="NTHWC",
-                                    fps=15,
-                                )
+                                # # nvid2 = np.stack(imgs_green_only)[None]
+                                # # # TODO uncomment this
+                                # # self.writer.add_video(
+                                # #     "Video/GreenOnly",
+                                # #     nvid2,
+                                # #     self.last_checkpoint,
+                                # #     dataformats="NTHWC",
+                                # #     fps=15,
+                                # # )
                                 print("video added")
 
                                 # plt.plot(

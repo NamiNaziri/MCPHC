@@ -2,6 +2,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
+import statistics
+
 
 class EasyPlot:
     def __init__(self):
@@ -22,9 +24,10 @@ class EasyPlot:
             else:
                 writer.add_figure(f"matplot/{label}", new_fig, epoch_count)
             plt.close(new_fig)
-        #     plt.plot(coordinates['x'], coordinates['y'], marker='o', label=label)
-        # plt.xlabel('X-axis')
-        # plt.ylabel('Y-axis')
-        # plt.title('Easy Plot')
-        # plt.legend()
-        # plt.show()
+    
+    def plot_mean(self, writer, epoch_count):
+        for label, coordinates in self.points.items():
+            if('reward' in label):
+                writer.add_scalar(f"scaler_reward/{label}", statistics.mean(coordinates['y']), epoch_count)
+            else:
+                writer.add_scalar(f"scaler/{label}", statistics.mean(coordinates['y']), epoch_count)

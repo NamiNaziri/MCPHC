@@ -8,7 +8,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: 1536
   envSpacing: 16
-  episodeLength: 300
+  episodeLength: 500
   isFlagrun: False
   enableDebugVis: False
 
@@ -19,7 +19,7 @@ env:
   gate_pvae: False
   calc_root_dir: True
   root_dir_action: True
-  random_box_pos: True
+  random_box_pos: False
   sweep: False
   sweep1: 0
   sweep2: 0

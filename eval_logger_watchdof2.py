@@ -67,7 +67,8 @@ def monitor_directory(parent_directory, polling_interval=2):
                     if file not in previous_files:
                         if ".pth" in file:
                             print(f"New file created in {directory}: {os.path.join(directory, file)}")
-                            experiment = directory.split('/')[1]
+                            experiment = '/'.join(directory.split('/')[1:-1])
+                            print(experiment)
                             try:
                                 subprocess.run(['python', 'eval_easy_logger.py', '--experiment', experiment, '--checkpoint', file], check=True)
                             except subprocess.CalledProcessError as e:
