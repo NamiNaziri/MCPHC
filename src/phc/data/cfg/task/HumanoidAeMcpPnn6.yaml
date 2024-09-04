@@ -8,7 +8,7 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: 1536
   envSpacing: 16
-  episodeLength: 1500
+  episodeLength: 250
   isFlagrun: False
   enableDebugVis: False
 
@@ -107,7 +107,7 @@ env:
 
 sim:
   substeps: 2
-  dt: 0.01666666666
+  dt: 0.03333333333
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   up_axis: "z"
   gravity: [0.0, 0.0, -9.81]

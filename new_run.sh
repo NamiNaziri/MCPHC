@@ -1,10 +1,12 @@
 #!/bin/bash
 
 
-#SBATCH --time=00:50:00
+#SBATCH --time=05:50:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32gb
 #SBATCH --gres=gpu:1
+#SBATCH --partition=gpu-p100-16g,gpu-v100-32g,gpu-v100-16g
+
 echo "$1"
 experiment_name=$1
 echo ""$experiment_name".pi"

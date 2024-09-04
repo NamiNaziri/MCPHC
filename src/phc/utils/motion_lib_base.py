@@ -289,45 +289,33 @@ class MotionLibBase:
         num_motion_to_load = len(skeleton_trees)
 
         print(self._num_unique_motions)
-        # if random_sample:
-        #     sample_idxes = torch.multinomial(
-        #         self._sampling_prob, num_samples=num_motion_to_load, replacement=True
-        #     ).to(self._device)
-        # else:
-        #     sample_idxes = torch.remainder(
-        #         torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions
-        #     ).to(self._device)
-        # sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
+        if random_sample:
+            sample_idxes = torch.multinomial(
+                self._sampling_prob, num_samples=num_motion_to_load, replacement=True,
+            ).to(self._device)
+        else:
+            sample_idxes = torch.remainder(torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions ).to(self._device)
+        ##sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
         sample_idxes = torch.full((num_motion_to_load,), 0)  # TODO
 
         # import ipdb; ipdb.set_trace()
         self._curr_motion_ids = sample_idxes
-        self.one_hot_motions = torch.nn.functional.one_hot(
-            self._curr_motion_ids, num_classes=self._num_unique_motions
-        ).to(
-            self._device
-        )  # Testing for obs_v5
+        self._curr_motion_ids[0] = 0
+        self.one_hot_motions = torch.nn.functional.one_hot(self._curr_motion_ids, num_classes = self._num_unique_motions).to(self._device)  # Testing for obs_v5
         self.curr_motion_keys = self._motion_data_keys[sample_idxes]
-        self._sampling_batch_prob = (
-            self._sampling_prob[self._curr_motion_ids]
-            / self._sampling_prob[self._curr_motion_ids].sum()
-        )
+        self._sampling_batch_prob = self._sampling_prob[self._curr_motion_ids] / self._sampling_prob[self._curr_motion_ids].sum()
 
-        print(
-            "\n****************************** Current motion keys ******************************"
-        )
+        print("\n****************************** Current motion keys ******************************")
         print("Sampling motion:", sample_idxes[:30])
         if len(self.curr_motion_keys) < 100:
             print(self.curr_motion_keys)
         else:
             print(self.curr_motion_keys[:30], ".....")
-        print(
-            "*********************************************************************************\n"
-        )
+        print("*********************************************************************************\n")
 
         motion_data_list = self._motion_data_list[sample_idxes.cpu().numpy()]
         # mp.set_sharing_strategy('file_descriptor')
-
+        print(motion_data_list.shape)
         manager = mp.Manager()
         queue = manager.Queue()
         # num_jobs = min(mp.cpu_count(), 64)
@@ -336,50 +324,34 @@ class MotionLibBase:
         if num_jobs <= 8 or not self.multi_thread:
             num_jobs = 1
         if flags.debug:
-            num_jobs = 4
+            num_jobs = 1
 
         # print(num_jobs)
         res_acc = {}  # using dictionary ensures order of the results.
-        # jobs = motion_data_list
-        # chunk = np.ceil(len(jobs) / num_jobs).astype(int)
-        # ids = np.arange(len(jobs))
-        # print('here')
-        # jobs = [(ids[i:i + chunk], jobs[i:i + chunk], skeleton_trees[i:i + chunk], gender_betas[i:i + chunk], self.fix_height, self.mesh_parsers, self._masterfoot_conifg, max_len) for i in range(0, len(jobs), chunk)]
-        # job_args = [jobs[i] for i in range(len(jobs))]
-        # print('here3')
+        jobs = motion_data_list
+        chunk = np.ceil(len(jobs) / num_jobs).astype(int)
+        ids = np.arange(len(jobs))
+
+        jobs = [(ids[i:i + chunk], jobs[i:i + chunk], skeleton_trees[i:i + chunk], gender_betas[i:i + chunk], self.fix_height, self.mesh_parsers, self._masterfoot_conifg, max_len) for i in range(0, len(jobs), chunk)]
+        job_args = [jobs[i] for i in range(len(jobs))]
         # for i in range(1, len(jobs)):
-        #     print('here2')
         #     worker_args = (*job_args[i], queue, i)
         #     worker = mp.Process(target=self.load_motion_with_skeleton, args=worker_args)
-        #     print('-test')
         #     worker.start()
         print(num_motion_to_load)
 
         print("start dup")
         # res_acc = torch.load('new_short_anim.pkl')
-        res_acc.update(
-            self.load_motion_with_skeleton(
-                [0],
-                motion_data_list[[0]],
-                [skeleton_trees[0]],
-                gender_betas[[0]],
-                self.fix_height,
-                self.mesh_parsers,
-                self._masterfoot_conifg,
-                max_len,
-                None,
-                0,
-            )
-        )
-        first = res_acc[0]
-        res_acc = {i: first for i in range(num_motion_to_load)}
+        #res_acc.update(self.load_motion_with_skeleton([0],motion_data_list[[0]],[skeleton_trees[0]],gender_betas[[0]],self.fix_height,self.mesh_parsers,self._masterfoot_conifg,max_len,None,0,))
+        ## first = res_acc[0]
+        
         print("end dup")
-        # res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
+        res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
         # torch.save(res_acc, "test_anim.pkl")
         # print('saved')
-        # for i in tqdm(range(len(jobs) - 1)):
-        #     res = queue.get()
-        #     res_acc.update(res)
+        for i in tqdm(range(len(jobs) - 1)):
+            res = queue.get()
+            res_acc.update(res)
 
         for f in tqdm(range(len(res_acc))):
             motion_file_data, curr_motion = res_acc[f]
@@ -393,9 +365,7 @@ class MotionLibBase:
             curr_len = 1.0 / motion_fps * (num_frames - 1)
 
             if "beta" in motion_file_data:
-                self._motion_aa.append(
-                    motion_file_data["pose_aa"].reshape(-1, self.num_joints * 3)
-                )
+                self._motion_aa.append(motion_file_data["pose_aa"].reshape(-1, self.num_joints * 3))
                 self._motion_bodies.append(curr_motion.gender_beta)
             else:
                 self._motion_aa.append(np.zeros((num_frames, self.num_joints * 3)))
@@ -414,10 +384,8 @@ class MotionLibBase:
                 self.q_gvs.append(curr_motion.quest_motion["linear_vel"])
 
             del curr_motion
-        print("test3")
-        self._motion_lengths = torch.tensor(
-            self._motion_lengths, device=self._device, dtype=torch.float32
-        )
+
+        self._motion_lengths = torch.tensor(self._motion_lengths, device=self._device, dtype=torch.float32)
         self._motion_fps = torch.tensor(
             self._motion_fps, device=self._device, dtype=torch.float32
         )
@@ -504,9 +472,7 @@ class MotionLibBase:
         lengths_shifted = lengths.roll(1)
         lengths_shifted[0] = 0
         self.length_starts = lengths_shifted.cumsum(0)
-        self.motion_ids = torch.arange(
-            len(motions), dtype=torch.long, device=self._device
-        )
+        self.motion_ids = torch.arange(len(motions), dtype=torch.long, device=self._device)
         motion = motions[0]
         self.num_bodies = motion.num_joints
 

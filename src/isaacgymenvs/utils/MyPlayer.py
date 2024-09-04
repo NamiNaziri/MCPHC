@@ -168,11 +168,13 @@ class MyPlayer(players.PpoPlayerContinuous):
                 green_rb_xyz = self.env._rigid_body_pos.reshape(-1, 24, 3)
                 box_xyz = self.env._box_pos
 
+
+
                 root_dist = torch.norm(red_rb_xyz[:, 0] - blue_rb_xyz[:, 0], dim=-1)
                 root_dists.append(root_dist)
 
-                box_dist = torch.norm(red_rb_xyz[:, 0] - box_xyz, dim=-1)
-                box_dists.append(box_dist)
+                # box_dist = torch.norm(red_rb_xyz[:, 0] - box_xyz, dim=-1)
+                # box_dists.append(box_dist)
 
                 heading_cossim = torch.cosine_similarity(
                     self.env.red_rb_root_rot_sixd[:, :3],

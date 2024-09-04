@@ -43,7 +43,7 @@ def monitor_directory(parent_directory, polling_interval=2):
     #     for file in files:
     #         print(os.path.join(directory, file))
     eval_state = {}
-    runs = ['t1_57_2_21_0','t1_57_2_21_1' ,'t1_57_2_21_2','t1_57_2_21_3','t1_57_2_21_4','t1_57_2_21_5','t1_57_2_21_7','t1_57_2_21_9']
+    runs = ['t7/36/0', 't7/36/1']
     for run in runs:
         for (directory, files) in previous_state.items():
             if( run in directory):
@@ -53,7 +53,9 @@ def monitor_directory(parent_directory, polling_interval=2):
         for file in files:
             if ".pth" in file:
                 print(f"New file created in {directory}: {os.path.join(directory, file)}")
-                experiment = directory.split('/')[1]
+                #print( (directory.split('/')))
+                dict_split = directory.split('/')
+                experiment = '/'.join(dict_split[1: -1])
                 try:
                     subprocess.run(['python', 'eval_easy_logger.py', '--experiment', experiment, '--checkpoint', file], check=True)
                 except subprocess.CalledProcessError as e:

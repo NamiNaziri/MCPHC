@@ -295,11 +295,15 @@ class MyA2c_continuous(a2c_continuous.A2CAgent):
 
                     for i in range(self.value_size):
                         rewards_name = "rewards" if i == 0 else "rewards{0}".format(i)
+                        
                         self.writer.add_scalar(
                             rewards_name + "/step".format(i), mean_rewards[i], frame
                         )
                         self.writer.add_scalar(
                             rewards_name + "/iter".format(i), mean_rewards[i], epoch_num
+                        )
+                        self.writer.add_scalar(
+                            rewards_name + "/avg" + "/iter".format(i), mean_rewards[i] / mean_lengths, epoch_num
                         )
                         self.writer.add_scalar(
                             rewards_name + "/time".format(i),
