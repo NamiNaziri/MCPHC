@@ -63,12 +63,12 @@ class MyPlayer(players.PpoPlayerContinuous):
             pv.Cube(center=(0, 0, -0.5), x_length=100, y_length=100), color="white"
         )
         self.box_vis = self.pl.add_mesh(
-            pv.Cube(center=(2, 0.3051, 0), x_length=0.3, y_length=15, z_length=0.4),
+            pv.Cube(center=(0.7, 0.3051, 0), x_length=0.3, y_length=15, z_length=0.4),
             color="black",
         )
 
         self.box_vis2 = self.pl.add_mesh(
-            pv.Cube(center=(0, 0.3051, 0), x_length=0.3, y_length=15, z_length=0.4),
+            pv.Cube(center=(-0.5, 0.3051, 0), x_length=0.3, y_length=15, z_length=0.4),
             color="black",
         )
         self.pl.add_axes()

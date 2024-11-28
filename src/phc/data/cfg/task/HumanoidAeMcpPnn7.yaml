@@ -7,14 +7,23 @@ physics_engine: ${..physics_engine}
 
 env:
   numEnvs: 1536
-  envSpacing: 3
-  episodeLength: 800
+  envSpacing: 16
+  episodeLength: 350
   isFlagrun: False
   enableDebugVis: False
 
-  ae_type: "cvae"  #Can be {ae, vae, cvae, none}
+  ae_type: "pvae_dof"  #Can be {ae, vae, cvae,pvae,dof,pvae_dof none}
   actor_init_pos: "static" # Can be {static, random, back_to_back}
-  root_motion: True
+  root_motion: False
+  physics_enable: False
+  gate_pvae: False
+  calc_root_dir: True
+  root_dir_action: True
+  random_box_pos: False
+  sweep: False
+  sweep1: 0
+  sweep2: 0
+  sweep3: 0
 
   bias_offset: False
   has_self_collision: True
@@ -98,7 +107,7 @@ env:
 
 sim:
   substeps: 2
-  dt: 0.01666666666
+  dt: 0.03333333333
   use_gpu_pipeline: ${eq:${...pipeline},"gpu"}
   up_axis: "z"
   gravity: [0.0, 0.0, -9.81]

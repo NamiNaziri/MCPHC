@@ -43,7 +43,7 @@ def monitor_directory(parent_directory, polling_interval=2):
     #     for file in files:
     #         print(os.path.join(directory, file))
     eval_state = {}
-    runs = ['t7/36/0', 't7/36/1']
+    runs = ['t15/12/0']
     for run in runs:
         for (directory, files) in previous_state.items():
             if( run in directory):

@@ -296,11 +296,13 @@ class MotionLibBase:
         else:
             sample_idxes = torch.remainder(torch.arange(len(skeleton_trees)) + start_idx, self._num_unique_motions ).to(self._device)
         ##sample_idxes = torch.remainder(torch.arange(self._num_unique_motions), self._num_unique_motions ).to(self._device)
-        sample_idxes = torch.full((num_motion_to_load,),28)  # TODO
+        #sample_idxes = torch.full((num_motion_to_load,), 2)  # TODO
+        
+        sample_idxes = torch.full((1,), 2)  # TODO
 
         # import ipdb; ipdb.set_trace()
         self._curr_motion_ids = sample_idxes
-        #self._curr_motion_ids[0] = 0
+        self._curr_motion_ids[0] = 0
         self.one_hot_motions = torch.nn.functional.one_hot(self._curr_motion_ids, num_classes = self._num_unique_motions).to(self._device)  # Testing for obs_v5
         self.curr_motion_keys = self._motion_data_keys[sample_idxes]
         self._sampling_batch_prob = self._sampling_prob[self._curr_motion_ids] / self._sampling_prob[self._curr_motion_ids].sum()
@@ -349,9 +351,15 @@ class MotionLibBase:
         res_acc.update(self.load_motion_with_skeleton(*jobs[0], None, 0))
         # torch.save(res_acc, "test_anim.pkl")
         # print('saved')
-        for i in tqdm(range(len(jobs) - 1)):
-            res = queue.get()
-            res_acc.update(res)
+        # for i in tqdm(range(len(jobs) - 1)):
+        #     res = queue.get()
+        #     res_acc.update(res)
+
+        for k in range(1,num_motion_to_load):
+            res_acc[k] = res_acc[0]
+
+        motion_file_data, curr_motion = res_acc[0]
+        motions.append(curr_motion)
 
         for f in tqdm(range(len(res_acc))):
             motion_file_data, curr_motion = res_acc[f]
@@ -374,7 +382,7 @@ class MotionLibBase:
             self._motion_fps.append(motion_fps)
             self._motion_dt.append(curr_dt)
             self._motion_num_frames.append(num_frames)
-            motions.append(curr_motion)
+            #motions.append(curr_motion)
             self._motion_lengths.append(curr_len)
 
             if flags.real_traj:
@@ -405,56 +413,56 @@ class MotionLibBase:
         self._motion_limb_weights = torch.tensor(
             np.array(limb_weights), device=self._device, dtype=torch.float32
         )
-        self._num_motions = len(motions)
+        self._num_motions = num_motion_to_load#len(motions)
 
         self.gts = (
             torch.cat([m.global_translation for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.grs = (
             torch.cat([m.global_rotation for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.lrs = (
             torch.cat([m.local_rotation for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.grvs = (
             torch.cat([m.global_root_velocity for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.gravs = (
             torch.cat([m.global_root_angular_velocity for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.gavs = (
             torch.cat([m.global_angular_velocity for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.gvs = (
             torch.cat([m.global_velocity for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.dvs = (
             torch.cat([m.dof_vels for m in motions], dim=0).float().to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.lts = (
             torch.cat([m.local_translation for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         self.ltf = (
             torch.cat([m.local_transformation for m in motions], dim=0)
             .float()
             .to(self._device)
-        )
+        ).unsqueeze(0).repeat(num_motion_to_load,1,1,1)
         file_path = "torchready_all.pkl"
 
         import pickle
