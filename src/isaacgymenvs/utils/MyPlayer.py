@@ -76,6 +76,9 @@ class MyPlayer(players.PpoPlayerContinuous):
         self.pl.camera.position = (distance, distance, 5)
         self.pl.camera.focal_point = (0, 0, 0)
 
+        sphere = pv.Sphere(radius=0.2)
+        self.obstacle_sphere = self.pl.add_mesh(sphere, color="yellow")
+        
         self.blue_actors = []
         self.red_actors = []
         self.green_actor = []
@@ -186,6 +189,10 @@ class MyPlayer(players.PpoPlayerContinuous):
                 # box_m = np.eye(4)
                 # box_m[:3, 3] = self.env._box_pos[0]
                 # self.box_vis.user_matrix = box_m
+                
+                m = np.eye(4)
+                m[:3, 3] = self.env.obstacle_pos[0].reshape(3)
+                self.obstacle_sphere.user_matrix = m
 
                 for i in range(24):
                     blue_actor = self.blue_actors[i]

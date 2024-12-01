@@ -66,7 +66,7 @@ from phc.utils.easy_plot import EasyPlot
 from phc.utils.motion_lib_smpl import MotionLibSMPL
 import re
 from isaacgym import gymtorch
-from isaacgym import gymapi
+from isaacgym import gymapi, gymutil
 from isaacgym.torch_utils import *
 import torch
 import torch.nn.functional as F
@@ -2642,7 +2642,7 @@ class HumanoidAeMcpPnn6(VecTask):
         ys_lower = torch.concatenate([orig_ys_root, dof_lower, vel_inv_lower, pose_inv_lower], dim=-1) *1
         ys_upper=torch.concatenate([ dof_upper, vel_inv_upper, pose_inv_upper], dim=-1) *1
         
-
+        
         # TODO: is this correct? setting both observation as the ref anim?
         if len(env_ids) == self.num_envs:
             
@@ -3614,7 +3614,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.extras["reward_raw"] = self.reward_raw.detach()
 
         # debug viz
-        if self.viewer and self.debug_viz:
+        if self.viewer:
             self._update_debug_viz()
 
         # Debugging
@@ -3718,7 +3718,9 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _update_camera(self):
         self.gym.refresh_actor_root_state_tensor(self.sim)
-        char_root_pos = self._box_pos.reshape(self.num_envs,2,3)[0,0].cpu().numpy()
+        #char_root_pos = self._box_pos.reshape(self.num_envs,2,3)[0,0].cpu().numpy()
+        #char_root_pos = self._box_pos.reshape(self.num_envs,2,3)[0,0].cpu().numpy()
+        char_root_pos = self.red_rb_xyz.reshape(self.num_envs * self.num_agents,24,3)[0,0].cpu().numpy()
 
         cam_trans = self.gym.get_viewer_camera_transform(self.viewer, None)
 
@@ -3803,13 +3805,58 @@ class HumanoidAeMcpPnn6(VecTask):
 
     def _update_debug_viz(self):
         self.gym.clear_lines(self.viewer)
+        
+        root_position = self.red_rb_xyz.reshape(-1, 24, 3)[0, [0]]
+        
+        self.draw_sphere(self._goal_pos[0], 0.2)
+        #self.draw_line(self._goal_pos[0], self.red_rb_xyz.reshape(-1, 24, 3)[0, [0]])
+
+        
+
+        heading_rot = torch_utils.calc_heading_quat_inv(torch.tensor(self.current_red_root_rot[[0]], dtype=torch.float, device=self.device))
+        root_vel = self.red_linear_vel[[0],0]
+        local_root_vel = torch_utils.my_quat_rotate(heading_rot, root_vel)
+
+        rotation = Rotation.from_quat(self.current_red_root_rot[[0]])
+        local_forward = torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)
+        forward_direction = rotation.apply(local_forward)
+        
+        
+
+        
+        root_vel_inv = self.red_linear_vel_inv[0,0]
+
+        # self.draw_line(root_position, root_position + local_root_vel * 100 , col=gymapi.Vec3(0,1,0))
+        # self.draw_line(root_position, root_position + root_vel_inv * 100 , col=gymapi.Vec3(0,0,1))
+        self.draw_line(root_position, root_position + forward_direction * 100 , col=gymapi.Vec3(0,1,1))
+        self.draw_line(root_position, root_position + root_vel , col=gymapi.Vec3(1,0,0))
+        print(torch.norm(root_vel))
+        
+
         return
+
+    def draw_sphere(self, point, radius=1, color=(1, 1, 0)):
+        sphere_geom = gymutil.WireframeSphereGeometry(radius, color=color)
+        sphere_pose = gymapi.Transform(self.get_vec3(point), r=None)
+        gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[0], sphere_pose) 
+
+
+    def get_vec3(self, point):
+        point = point.reshape(3)
+        return gymapi.Vec3(point[0], point[1], point[2])
+    
+    def draw_line(self, p0,p1, col = gymapi.Vec3(1.0, 0.0, 0.0)):
+        p0 = self.get_vec3(p0)
+        p1 = self.get_vec3(p1)
+        gymutil.draw_line(p0, p1, col, self.gym, self.viewer, self.envs[0])
 
     def normalize_vector(self, v):
         norm = torch.norm(v)
         if norm == 0:
             return v
         return v / norm
+
+    
 
     def rotate_vector_with_quaternion(self, vector, quaternion):
         # Ensure the quaternion is normalized
