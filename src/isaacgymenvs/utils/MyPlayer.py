@@ -82,14 +82,17 @@ class MyPlayer(players.PpoPlayerContinuous):
         self.blue_actors = []
         self.red_actors = []
         self.green_actor = []
+        self.orange_actors = []
         for _ in range(24):
             sphere = pv.Sphere(radius=0.1)
             blue_actor = self.pl.add_mesh(sphere, color="blue")
             red_actor = self.pl.add_mesh(sphere, color="red")
             green_actor = self.pl.add_mesh(sphere, color="green")
+            orange_actor = self.pl.add_mesh(sphere, color="orange")
             self.blue_actors.append(blue_actor)
             self.red_actors.append(red_actor)
             self.green_actor.append(green_actor)
+            self.orange_actors.append(orange_actor)
 
     def get_distance_for_body(self, body_pos, body_name):
         green_guy_pos = body_pos[:, 0, self.env._body_names.index(body_name), :]
@@ -200,6 +203,7 @@ class MyPlayer(players.PpoPlayerContinuous):
                     red_actor = self.red_actors[i]
                     # red_actor.SetVisibility(True)
                     green_actor = self.green_actor[i]
+                    orange_actor = self.orange_actors[i]
                     m = np.eye(4)
                     m[:3, 3] = blue_rb_xyz[0][i]
                     blue_actor.user_matrix = m
@@ -211,6 +215,10 @@ class MyPlayer(players.PpoPlayerContinuous):
                     m = np.eye(4)
                     m[:3, 3] = green_rb_xyz[0][i]
                     green_actor.user_matrix = m
+
+                    m = np.eye(4)
+                    m[:3, 3] = green_rb_xyz[1][i]
+                    orange_actor.user_matrix = m
 
                 if n % 4 == 0:
                     if hasattr(self.env, "new_cam_pos_vis"):

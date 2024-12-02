@@ -62,7 +62,7 @@ from scipy.spatial.transform import Rotation as sRot
 import gc
 from phc.utils.draw_utils import agt_color, get_color_gradient
 from phc.utils.easy_plot import EasyPlot
-
+import random
 from phc.utils.motion_lib_smpl import MotionLibSMPL
 import re
 from isaacgym import gymtorch
@@ -88,8 +88,11 @@ ENABLE_MAX_COORD_OBS = True
 normal = False
 latent_dim = 31
 upper_body = [ "Pelvis", "Torso", "Spine","Chest", "Neck", "Head", "L_Thorax", "L_Shoulder", "L_Elbow", "L_Wrist", "L_Hand", "R_Thorax", "R_Shoulder", "R_Elbow", "R_Wrist", "R_Hand"]
-lower_body = [ "L_Hip", "L_Knee", "L_Ankle", "L_Toe", "R_Hip", "R_Knee", "R_Ankle", "R_Toe", ]
-key_collision_part_list = upper_body #["Pelvis"]
+lower_body = [  "L_Hip", "L_Knee", "L_Ankle", "L_Toe", "R_Hip", "R_Knee", "R_Ankle", "R_Toe", ]
+key_collision_part_list = ["Pelvis"]
+key_obstacle_collision_part_list = upper_body
+
+
 # PERTURB_OBJS = [
 #     ["small", 60],
 #     ["small", 7],
@@ -1450,7 +1453,7 @@ class HumanoidAeMcpPnn6(VecTask):
             print("Unsupported character config file: {s}".format(asset_file))
             assert False
 
-        self._num_self_obs = 14 + 69 * 2 + 2 + 72 * 2 +3 + (len(key_collision_part_list) -1)*4 + 72 * 2 + 72
+        self._num_self_obs = 14 + 69 * 2 + 2 + 72 * 2 +3 + (len(key_collision_part_list) -1)*4 + 72 * 2 + 72 + (len(key_obstacle_collision_part_list) )* 3
 
         # Account for all agents
         self._num_self_obs *= num_agents
@@ -2208,9 +2211,16 @@ class HumanoidAeMcpPnn6(VecTask):
         for i in key_collision_part_list:
             key_part_indecies.append(self._body_names.index(i))
         
+        key_obstacle_part_indecies = []
+        for i in key_obstacle_collision_part_list:
+            key_obstacle_part_indecies.append(self._body_names.index(i))
+        
+
         self.reset_buf[:], self._terminate_buf[:] = compute_humanoid_reset(
+            self,
             self.step_count,
             key_part_indecies,
+            key_obstacle_part_indecies,
             self._box_xy_bb,
             self.reset_buf,
             self.progress_buf,
@@ -2254,6 +2264,10 @@ class HumanoidAeMcpPnn6(VecTask):
         for i in key_collision_part_list:
             key_part_indecies.append(self._body_names.index(i))
 
+        key_obstacle_part_indecies = []
+        for i in key_obstacle_collision_part_list:
+            key_obstacle_part_indecies.append(self._body_names.index(i))
+
         left_plane = self._box_pos[..., 1, 0] * 1
         right_plane = self._box_pos[..., 0, 0] * 1
 
@@ -2266,6 +2280,8 @@ class HumanoidAeMcpPnn6(VecTask):
 
         blue_to_left_plane = left_plane[:,None] - self.blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, 0]
         blue_to_right_plane = right_plane[:,None] - self.blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, 0]
+
+        red_to_obstacle = self.obstacle_pos - self.red_rb_xyz.reshape(-1, 24, 3)[:, key_obstacle_part_indecies]
 
         red_to_goal = self._goal_pos * 1 - self.red_rb_xyz.reshape(-1, 24, 3)[:, [0]]
 
@@ -2292,7 +2308,7 @@ class HumanoidAeMcpPnn6(VecTask):
 
         red_key_rb = self.red_rb_xyz.reshape(-1,24,3)[:, key_part_indecies, :2].reshape(self.num_envs, -1)
         #self.red_obs = torch.cat([red_key_rb, self._box_pos,  self._box_pos - self.red_rb_root_xyz,self.prev_red_rb_root_xyz,self.red_rb_root_xyz, self.red_xy_velocity, self.current_red_yaw_angles],dim=-1,)
-        self.red_obs = torch.cat([self._rigid_body_pos.reshape(self.num_envs,-1) ,red_rb_pos_inv.reshape(self.num_envs,-1), red_to_goal.reshape(self.num_envs,-1), red_to_left_plane,red_to_right_plane,self.red_dof_pos, self.red_root_out,self.red_rb_root_xyz, self.red_rb_xyz.reshape(self.num_envs,-1)],dim=-1,)
+        self.red_obs = torch.cat([red_to_obstacle.reshape(self.num_envs,-1) ,self._rigid_body_pos.reshape(self.num_envs,-1) ,red_rb_pos_inv.reshape(self.num_envs,-1), red_to_goal.reshape(self.num_envs,-1), red_to_left_plane,red_to_right_plane,self.red_dof_pos, self.red_root_out,self.red_rb_root_xyz, self.red_rb_xyz.reshape(self.num_envs,-1)],dim=-1,)
         #self.red_obs = torch.cat([ self.red_rb_root_xyz],dim=-1,)
         #print(self.red_obs.shape)
 
@@ -2521,8 +2537,10 @@ class HumanoidAeMcpPnn6(VecTask):
         else:
             self._box_states[env_ids] = self._initial_box_states[env_ids].clone()
         
+        
 
         self._goal_states[env_ids] = self._initial_goal_states[env_ids].clone()
+
 
         self._corrected_initial_humanoid_root_pos = self._humanoid_root_states.clone()[
             ..., 0:2
@@ -2647,6 +2665,7 @@ class HumanoidAeMcpPnn6(VecTask):
         if len(env_ids) == self.num_envs:
             
             #TODO
+            
             ##self.cached_decoded =  orig_ys_root * 1
             self.cached_decoded =  torch.concatenate([ys_lower, ys_upper], dim=-1) *1
             #self.cached_decoded = torch.zeros((self.num_envs * num_agents, 74), device=self.device)
@@ -2667,6 +2686,11 @@ class HumanoidAeMcpPnn6(VecTask):
             #self.red_full_out = self.blue_full_in * 1
 
             #self.mu = torch.zeros((self.num_envs * num_agents,34), device=self.device)
+
+            self.obstacle_pos = self._goal_pos.clone()
+            self.obstacle_pos[..., 0] = 0.25
+            self.obstacle_pos[..., 2] = 1.5
+
             
             self.blue_rb_root_ang_vel = body_ang_vel[:, 0] * 1
             self.blue_sixd = rb_rot_sixd.reshape(self.num_envs * num_agents, -1) * 1
@@ -2697,7 +2721,9 @@ class HumanoidAeMcpPnn6(VecTask):
             self.red_sixd = self.blue_sixd * 1
             self.red_joint_ang_vel = self.blue_joint_ang_vel * 1
         else:
-
+            self.obstacle_pos[env_ids] = self._goal_pos[env_ids].clone()
+            self.obstacle_pos[env_ids, ..., 2] = 1.5
+            self.obstacle_pos[env_ids,..., 0] = 0.25
             #self.cached_decoded[env_ids] =  orig_ys_root * 1
             self.cached_decoded[env_ids] =  torch.concatenate([ys_lower, ys_upper], dim=-1) *1
             #self.cached_decoded[env_ids] = torch.zeros((len(env_ids) * num_agents, 74), device=self.device)
@@ -3614,7 +3640,7 @@ class HumanoidAeMcpPnn6(VecTask):
         self.extras["reward_raw"] = self.reward_raw.detach()
 
         # debug viz
-        if self.viewer:
+        if self.viewer and self.num_envs < 3:
             self._update_debug_viz()
 
         # Debugging
@@ -3733,10 +3759,12 @@ class HumanoidAeMcpPnn6(VecTask):
         )
         # print(new_cam_pos)
         # print(new_cam_target)
+        #cam_delta[..., 2] = 0
         self.new_cam_pos_vis = (
             2.6125659942626953, -5.503269195556641, 1.7383817434310913
-        )
-
+        ) + cam_delta
+        
+        #self.new_cam_pos_vis = (char_root_pos[0], char_root_pos[1], 1.0)
         #2.6125659942626953, -5.503269195556641, 1.7383817434310913 - (2.5, 0.3051, 0.0)
         #self.new_cam_pos_vis = (self._box_pos[0,0], self._box_pos[0,1], 1.73)
         self.new_cam_pos_vis2 = (16.250212, -7.945037, 6.500098)
@@ -3808,7 +3836,10 @@ class HumanoidAeMcpPnn6(VecTask):
         
         root_position = self.red_rb_xyz.reshape(-1, 24, 3)[0, [0]]
         
-        self.draw_sphere(self._goal_pos[0], 0.2)
+        #self.draw_sphere(self._goal_pos[0], 0.2)
+
+        self.draw_sphere(self.obstacle_pos[0], 0.2)
+        
         #self.draw_line(self._goal_pos[0], self.red_rb_xyz.reshape(-1, 24, 3)[0, [0]])
 
         
@@ -3821,16 +3852,44 @@ class HumanoidAeMcpPnn6(VecTask):
         local_forward = torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device)
         forward_direction = rotation.apply(local_forward)
         
-        
 
-        
+        key_part_indecies = []
+        for i in key_collision_part_list:
+            key_part_indecies.append(self._body_names.index(i))
+
+        key_obstacle_part_indecies = []
+        for i in key_obstacle_collision_part_list:
+            key_obstacle_part_indecies.append(self._body_names.index(i))
+
+
+        for kp_idx in key_obstacle_part_indecies:
+            self.draw_line(self.red_rb_xyz.reshape(-1, 24, 3)[0, kp_idx], self.obstacle_pos[0] , col=gymapi.Vec3(1,0,1))
+
+        left_plane = self._box_pos[:, 1] * 1
+        left_plane[...,1:] = 0
+        left_plane[..., 0] += 0.15
+
+
+        right_plane = self._box_pos[:, 0] * 1
+        right_plane[...,1:] = 0
+        right_plane[..., 0] -= 0.15
+
+
+        for kp_idx in key_part_indecies:
+            #pos = self.red_rb_xyz.reshape(-1, 24, 3)[0, kp_idx]
+            left_plane[..., 1:] = self.red_rb_xyz.reshape(-1, 24, 3)[0, kp_idx, 1:] * 1
+            right_plane[..., 1:] = self.red_rb_xyz.reshape(-1, 24, 3)[0, kp_idx, 1:] * 1
+            self.draw_line(self.red_rb_xyz.reshape(-1, 24, 3)[0, kp_idx], left_plane[0] , col=gymapi.Vec3(1,0,0))
+            self.draw_line(self.red_rb_xyz.reshape(-1, 24, 3)[0, kp_idx], right_plane[0] , col=gymapi.Vec3(1,0,0))
+
+
         root_vel_inv = self.red_linear_vel_inv[0,0]
 
         # self.draw_line(root_position, root_position + local_root_vel * 100 , col=gymapi.Vec3(0,1,0))
         # self.draw_line(root_position, root_position + root_vel_inv * 100 , col=gymapi.Vec3(0,0,1))
         self.draw_line(root_position, root_position + forward_direction * 100 , col=gymapi.Vec3(0,1,1))
         self.draw_line(root_position, root_position + root_vel , col=gymapi.Vec3(1,0,0))
-        print(torch.norm(root_vel))
+        #print(torch.norm(root_vel))
         
 
         return
@@ -4131,6 +4190,10 @@ def compute_humanoid_reward(
     for i in key_collision_part_list:
         key_part_indecies.append(self._body_names.index(i))
 
+    key_obstacle_part_indecies = []
+    for i in key_obstacle_collision_part_list:
+        key_obstacle_part_indecies.append(self._body_names.index(i))
+
 
     left_plane = self._box_pos[..., 1, 0] * 1 + 0.15
     right_plane = self._box_pos[..., 0, 0] * 1 - 0.15
@@ -4138,6 +4201,7 @@ def compute_humanoid_reward(
     #left plane is multiplied by -1 since the character should be on the right side of it
     red_to_left_plane = -1 * torch.min(left_plane[:,None] - self.red_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, 0], dim=-1).values
     red_to_right_plane = torch.min(right_plane[:,None] - self.red_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, 0], dim=-1).values
+    red_to_obstacle = torch.min(torch.norm(self.obstacle_pos - self.red_rb_xyz.reshape(-1, 24, 3)[:, key_obstacle_part_indecies], dim=-1), dim=-1).values
 
     blue_to_left_plane = torch.min(left_plane[:,None] - self.blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, 0], dim=-1).values
     blue_to_right_plane = torch.min(right_plane[:,None] - self.blue_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, 0], dim=-1).values
@@ -4145,17 +4209,20 @@ def compute_humanoid_reward(
 
     #calculate box distance based on box bounding box!
 
-    self.plot_scaler("custom/red_to_left_plane",torch.mean(red_to_left_plane[...,0]),self.step_count,)
-    self.plot_scaler("custom/red_to_right_plane",torch.mean(red_to_right_plane[...,0]),self.step_count,)
+    self.plot_scaler("custom/red_to_left_plane",torch.mean(red_to_left_plane),self.step_count,)
+    self.plot_scaler("custom/red_to_right_plane",torch.mean(red_to_right_plane),self.step_count,)
+    self.plot_scaler("custom/red_to_obstacle",torch.mean(red_to_obstacle),self.step_count,)
 
-    self.plot_scaler("custom/blue_to_left_plane",torch.mean(blue_to_left_plane[...,0]),self.step_count,)
-    self.plot_scaler("custom/blue_to_right_plane",torch.mean(blue_to_right_plane[...,0]),self.step_count,)
+    self.plot_scaler("custom/blue_to_left_plane",torch.mean(blue_to_left_plane),self.step_count,)
+    self.plot_scaler("custom/blue_to_right_plane",torch.mean(blue_to_right_plane),self.step_count,)
 
     k9 = 0.8
     red_to_right_plane_val = red_to_right_plane * 1
     red_to_right_plane_penalty = torch.tanh((10**k9) * red_to_right_plane_val) - 1
     red_to_left_plane_val = red_to_left_plane * 1
     red_to_left_plane_penalty = torch.tanh((10**k9) * red_to_left_plane_val) - 1
+
+    red_to_obstacle_penalty = torch.tanh((10**k9) * red_to_obstacle) - 1
     
     #k9 = 1.3
     #red_to_right_plane_reward = 1e0 - torch.exp(-1 * (10**k9) * (red_to_right_plane_val**2))
@@ -4205,8 +4272,13 @@ def compute_humanoid_reward(
     delta_root_to_goal_mean_norm_reward =  1e0 * torch.exp(-1 * (10**k11) * (delta_root_to_goal_mean_norm**2))
     
     # update the goal when character reaches it
-    self._goal_pos[delta_root_to_goal_mean_norm < 1.0,:,1] += 1
-    delta_root_to_goal_mean_norm_reward[delta_root_to_goal_mean_norm <  1.0] += 20
+    self._goal_pos[delta_root_to_goal_mean_norm < 0.15,:,1] += 1
+    delta_root_to_goal_mean_norm_reward[delta_root_to_goal_mean_norm <  0.15] += 20
+
+
+    self.obstacle_pos[delta_root_to_goal_mean_norm < 0.15,:,1] = self._goal_pos[delta_root_to_goal_mean_norm < 0.15,:,1] * 1 - 0.2
+    #self.obstacle_pos[..., 2] = 1.5
+    self.obstacle_pos[delta_root_to_goal_mean_norm < 0.15, :, 0] = self.obstacle_pos[delta_root_to_goal_mean_norm < 0.15, :, 0] * -1 
 
     hand_distance = red_rb_pos.reshape(-1, 24, 3)[:,[hand_idx],2] - 3
     hand_reward = 1e0 * torch.exp(-1 * (10**k1) * (torch.norm(hand_distance, dim=-1)**2))
@@ -4217,6 +4289,9 @@ def compute_humanoid_reward(
     self.plot_scaler("reward/delta_root_xyz_mean_norm_reward",torch.mean(delta_root_xyz_mean_norm_reward), self.step_count,)
     self.plot_scaler("reward/red_to_right_plane_penalty",torch.mean(red_to_right_plane_penalty), self.step_count,)
     self.plot_scaler("reward/red_to_left_plane_penalty",torch.mean(red_to_left_plane_penalty), self.step_count,)
+    self.plot_scaler("reward/red_to_obstacle_penalty",torch.mean(red_to_obstacle_penalty), self.step_count,)
+
+    
 
     k2 = 0
     delta_root_state = self.blue_root_in.reshape(self.num_envs * num_agents,-1) - self.red_root_out.reshape(self.num_envs * num_agents,-1)
@@ -4303,15 +4378,16 @@ def compute_humanoid_reward(
     self.easy_plot.add_point( self.step_count, torch.mean(energy_penalty).item(), 'energy_penalty')
     #print(action_penalty)
     reward = (
-        # delta_root_xyz_mean_norm_reward
+        delta_root_xyz_mean_norm_reward
          #2 * hand_reward+ 
-         1 *delta_root_to_goal_mean_norm_reward 
-          + energy_penalty 
+        #  1 *delta_root_to_goal_mean_norm_reward 
+        #   + energy_penalty 
         #  + 1 * action_penalty
-         + 4 * imitation_inv_reward 
+         + 1 * imitation_inv_reward 
         #  delta_root_xyz_mean_norm_reward 
         + 1 * red_to_right_plane_penalty
         + 1 * red_to_left_plane_penalty
+        # + 4* red_to_obstacle_penalty
         # + energy_penalty
         #+ 0.01 * energy_penalty
         # + energy_penalty * 0.05
@@ -4322,10 +4398,12 @@ def compute_humanoid_reward(
 
 
 
-@torch.jit.script
+#@torch.jit.script
 def compute_humanoid_reset(
+    self,
     step_count,
     key_part_indecies,
+    key_obstacle_part_indecies,
     _box_xy_bb,
     reset_buf,
     progress_buf,
@@ -4404,6 +4482,8 @@ def compute_humanoid_reset(
         #     right_collision_check = red_rb_xyz.reshape(-1, 24, 3)[:, key_part_indecies, :2][...,0] > right_plane[:,None]
         #     terminated |= torch.any(right_collision_check, dim=-1)
 
+            #self.obstacle_pos
+
         # latent_check = mu > 6
         # terminated |= torch.any(latent_check, dim=-1)
         # br_distance_delta_xyz = (_box_pos[..., :2].reshape(-1, 1, 2).repeat(1, len(key_part_indecies), 1) 
@@ -4426,7 +4506,7 @@ def compute_humanoid_reset(
 
         #terminated = test
 
-        terminated *= progress_buf > 2
+        terminated *= progress_buf > 100
 
     reset = torch.where(
         progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
